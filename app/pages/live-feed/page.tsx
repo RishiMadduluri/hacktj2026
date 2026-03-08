@@ -881,17 +881,17 @@ export default function LiveFeedPage() {
 
     await syncBroadcastChannels();
 
-    // Start broadcasting tiny frames every 750ms
+    // Start broadcasting frames every 300ms
     broadcastIntervalRef.current = setInterval(() => {
       if (!videoRef.current || orgChannelsRef.current.length === 0 || !userId) return;
       const tmp = document.createElement("canvas");
-      tmp.width = 160;
-      tmp.height = 90;
+      tmp.width = 320;
+      tmp.height = 180;
       const ctx = tmp.getContext("2d");
       if (!ctx) return;
       try {
-        ctx.drawImage(videoRef.current, 0, 0, 160, 90);
-        const frameData = tmp.toDataURL("image/jpeg", 0.3);
+        ctx.drawImage(videoRef.current, 0, 0, 320, 180);
+        const frameData = tmp.toDataURL("image/jpeg", 0.5);
         for (const { orgId, channel } of orgChannelsRef.current) {
           if (!enabledOrgIdsRef.current.has(orgId)) {
             continue;
@@ -900,7 +900,7 @@ export default function LiveFeedPage() {
           broadcastFrame(channel, userId, profile?.name || "", frameData);
         }
       } catch { /* ignore */ }
-    }, 750);
+    }, 150);
 
     lastDetectionTime.current = 0;
     detectionFrameRef.current = requestAnimationFrame(runDetection);
