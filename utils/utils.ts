@@ -1,16 +1,16 @@
 import { redirect } from "next/navigation";
 
 /**
- * Redirects to a specified path with an encoded message as a query parameter.
- * @param {('error' | 'success')} type - The type of message, either 'error' or 'success'.
- * @param {string} path - The path to redirect to.
- * @param {string} message - The message to be encoded and added as a query parameter.
- * @returns {never} This function doesn't return as it triggers a redirect.
+ * Redirect to `path` with an encoded status message appended as a query param.
+ *
+ * @param kind  - "error" | "success"
+ * @param path  - target route
+ * @param msg   - human-readable status message
  */
 export function encodedRedirect(
-  type: "error" | "success",
+  kind: "error" | "success",
   path: string,
-  message: string,
-) {
-  return redirect(`${path}?${type}=${encodeURIComponent(message)}`);
+  msg: string,
+): never {
+  return redirect(`${path}?${kind}=${encodeURIComponent(msg)}`);
 }

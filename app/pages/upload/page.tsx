@@ -69,7 +69,7 @@ export default function UploadPage() {
       console.error('Error setting video time:', error);
       return null;
     }
-    
+
     // Wait for video to seek to the specified time
     await new Promise((resolve) => {
       video.onseeked = resolve;
@@ -140,7 +140,7 @@ export default function UploadPage() {
       // Start analysis
       setIsAnalyzing(true)
       const duration = video.duration
-      
+
       if (!duration || duration === Infinity || isNaN(duration)) {
         throw new Error('Invalid video duration')
       }
@@ -225,7 +225,7 @@ export default function UploadPage() {
       id: Date.now().toString(),
       name: videoName,
       url: videoUrl,
-      thumbnailUrl: videoUrl, 
+      thumbnailUrl: videoUrl,
       timestamps: timestamps,
     }
     savedVideos.push(newVideo)
@@ -240,9 +240,9 @@ export default function UploadPage() {
           <div className="space-y-8">
             <div className="text-center">
               <h1 className="text-3xl font-bold mb-2 text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.7)]">
-                Video Timestamp Analyzer
+                Medical Video Analyzer
               </h1>
-              <p className="text-zinc-400">Upload a video to analyze key moments and generate timestamps</p>
+              <p className="text-zinc-400">Upload a recording to detect medical events and generate a timestamped report</p>
             </div>
 
             {!videoUrl && (
@@ -254,18 +254,18 @@ export default function UploadPage() {
                     onDragOver={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      e.currentTarget.classList.add('border-purple-500');
+                      e.currentTarget.classList.add('border-red-500');
                     }}
                     onDragLeave={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      e.currentTarget.classList.remove('border-purple-500');
+                      e.currentTarget.classList.remove('border-red-500');
                     }}
                     onDrop={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      e.currentTarget.classList.remove('border-purple-500');
-                      
+                      e.currentTarget.classList.remove('border-red-500');
+
                       const file = e.dataTransfer.files[0];
                       if (file && file.type.startsWith('video/')) {
                         const input = document.getElementById('video-upload') as HTMLInputElement;

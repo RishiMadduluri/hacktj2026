@@ -1,67 +1,68 @@
-import { NextResponse } from 'next/server'
-import OpenAI from 'openai'
+import { NextResponse } from "next/server";
+import OpenAI from "openai";
 
-const getOpenAIClient = () => {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) {
-    throw new Error('OpenAI API key not found in environment variables')
-  }
-  return new OpenAI({ apiKey })
+/* ------------------------------------------------------------------ */
+/*  POST /api/chat — conversational assistant powered by GPT           */
+/* ------------------------------------------------------------------ */
+
+function buildClient(): OpenAI {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) throw new Error("OPENAI_API_KEY is not set");
+  return new OpenAI({ apiKey: key });
 }
 
-export async function POST(request: Request) {
-  let openai
+export async function POST(req: Request) {
+  // Initialise client
+  let client: OpenAI;
   try {
-    openai = getOpenAIClient()
-  } catch (error) {
-    console.error('OpenAI client initialization error:', error)
+    client = buildClient();
+  } catch (err) {
+    console.error("[chat] client init failed:", err);
     return NextResponse.json(
-      { error: 'OpenAI API key not properly configured' },
-      { status: 500 }
-    )
+      { error: "OpenAI API key not configured" },
+      { status: 500 },
+    );
   }
+
   try {
-    const { messages, events } = await request.json()
+    const { messages, events } = await req.json();
 
-    const contextMessage = events.length > 0
-      ? `Here are the recent events that have occurred during the video stream:\n${events.map((event: any) => 
-          `- At ${event.timestamp}: ${event.description}${event.isDangerous ? ' (⚠️ Dangerous)' : ''}`
-        ).join('\n')}\n\nPlease help the user with any questions about these events or provide general assistance.`
-      : 'No events have been detected yet. I can still help you with any questions about the video stream or general assistance.'
+    /* Build context from detected medical events */
+    const eventContext =
+      events.length > 0
+        ? `Below are recent events from the medical monitoring feed:\n${events
+          .map(
+            (ev: any) =>
+              `- ${ev.timestamp}: ${ev.description}${ev.isDangerous ? " (⚠️ Critical)" : ""}`,
+          )
+          .join("\n")}\n\nAssist the user with questions about these events or provide general guidance.`
+        : "No events have been detected yet. You can still help the user with questions about the monitoring feed.";
 
-    console.log('Sending request to OpenAI...')
-    const response = await openai.chat.completions.create({
+    const completion = await client.chat.completions.create({
       model: "gpt-3.5-turbo",
+      temperature: 0.7,
+      max_tokens: 150,
       messages: [
         {
           role: "system",
-          content: "You are a helpful assistant monitoring a real-time video stream. You have access to detected events and can provide guidance, especially during dangerous situations. Be concise but informative, and show appropriate concern for dangerous events while remaining calm and helpful."
+          content:
+            "You are a medical monitoring assistant for FirstWatch. You help caregivers understand real-time health events detected in video feeds. Be concise, calm, and medically cautious.",
         },
-        {
-          role: "system",
-          content: contextMessage
-        },
-        ...messages
+        { role: "system", content: eventContext },
+        ...messages,
       ],
-      temperature: 0.7,
-      max_tokens: 150 // Keep responses concise
-    })
+    });
 
-    if (!response.choices?.[0]?.message?.content) {
-      throw new Error('Invalid response from OpenAI')
-    }
+    const reply = completion.choices?.[0]?.message?.content;
+    if (!reply) throw new Error("Empty response from model");
 
-    console.log('Successfully received response from OpenAI')
-    return NextResponse.json({ 
-      content: response.choices[0].message.content,
-      role: 'assistant'
-    })
-  } catch (error: any) {
-    console.error('Chat API error:', error)
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+    return NextResponse.json({ content: reply, role: "assistant" });
+  } catch (err: unknown) {
+    console.error("[chat] error:", err);
+    const msg = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(
-      { error: `Failed to get chat response: ${errorMessage}` },
-      { status: 500 }
-    )
+      { error: `Chat failed: ${msg}` },
+      { status: 500 },
+    );
   }
 }

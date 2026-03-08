@@ -1,22 +1,30 @@
-import { put } from "@vercel/blob"
-import { NextResponse } from "next/server"
+import { put } from "@vercel/blob";
+import { NextResponse } from "next/server";
 
-export async function POST(request: Request) {
+/* ------------------------------------------------------------------ */
+/*  POST /api/upload — upload a video file to Vercel Blob storage      */
+/* ------------------------------------------------------------------ */
+
+export async function POST(req: Request) {
   try {
-    const formData = await request.formData()
-    const file = formData.get("file") as File
+    const form = await req.formData();
+    const file = form.get("file") as File | null;
 
     if (!file) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 })
+      return NextResponse.json(
+        { error: "No file found in request" },
+        { status: 400 },
+      );
     }
 
-    const blob = await put(file.name, file, {
-      access: "public",
-    })
+    const { url } = await put(file.name, file, { access: "public" });
 
-    return NextResponse.json({ url: blob.url })
-  } catch (error) {
-    return NextResponse.json({ error: "Error uploading file" }, { status: 500 })
+    return NextResponse.json({ url });
+  } catch (err) {
+    console.error("[upload] error:", err);
+    return NextResponse.json(
+      { error: "Upload failed" },
+      { status: 500 },
+    );
   }
 }
-

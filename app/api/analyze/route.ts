@@ -1,37 +1,33 @@
-import { GoogleGenerativeAI } from "@google/generative-ai"
-import { NextResponse } from "next/server"
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { NextResponse } from "next/server";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
+/* ------------------------------------------------------------------ */
+/*  POST /api/analyze — mock video-analysis endpoint                   */
+/* ------------------------------------------------------------------ */
 
-export async function POST(request: Request) {
+const geminiClient = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+
+export async function POST(req: Request) {
   try {
-    const { videoUrl } = await request.json()
+    const body = await req.json();
+    const { videoUrl } = body;
 
-    // mocking right now
-    const mockTimestamps = [
-      {
-        timestamp: "00:03",
-        description: "Introduction begins with main topic overview",
-      },
-      {
-        timestamp: "01:30",
-        description: "First key point discussion starts",
-      },
-      {
-        timestamp: "02:45",
-        description: "Demonstration of main concept",
-      },
-      {
-        timestamp: "04:20",
-        description: "Summary of key takeaways",
-      },
-    ]
+    // TODO: replace mock with real Gemini vision pipeline
+    const mockResults = [
+      { timestamp: "00:03", description: "Resident begins morning routine" },
+      { timestamp: "01:30", description: "Possible unsteady gait detected" },
+      { timestamp: "02:45", description: "Subject appears to grip furniture for support" },
+      { timestamp: "04:20", description: "Analysis summary: no critical incidents" },
+    ];
 
-    await new Promise((resolve) => setTimeout(resolve, 2000))
+    // Simulate processing latency
+    await new Promise((r) => setTimeout(r, 2000));
 
-    return NextResponse.json(mockTimestamps)
-  } catch (error) {
-    return NextResponse.json({ error: "Error analyzing video" }, { status: 500 })
+    return NextResponse.json(mockResults);
+  } catch (_err) {
+    return NextResponse.json(
+      { error: "Failed to analyse video feed" },
+      { status: 500 },
+    );
   }
 }
-

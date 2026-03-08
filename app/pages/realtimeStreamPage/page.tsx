@@ -707,15 +707,15 @@ export default function Page() {
   return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center p-4">
       <div className="w-full max-w-4xl relative">
-        <div className="absolute inset-0 bg-purple-900/5 blur-3xl rounded-full"></div>
+        <div className="absolute inset-0 bg-red-900/5 blur-3xl rounded-full"></div>
         <div className="relative z-10 p-8">
           <div className="space-y-8">
             <div className="text-center">
               <h1 className="text-3xl font-bold mb-2 text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.7)]">
-                Real-time Stream Analyzer
+                Live Medical Monitor
               </h1>
               <p className="text-zinc-400">
-                Analyze your live stream in real-time and detect key moments
+                Monitor a live video feed with AI-powered medical event detection
               </p>
             </div>
 
@@ -723,7 +723,7 @@ export default function Page() {
               <div className="relative aspect-video rounded-lg overflow-hidden bg-zinc-900">
                 {isInitializing && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900/90 z-20">
-                    <Loader2 className="w-8 h-8 animate-spin text-purple-500 mb-2" />
+                    <Loader2 className="w-8 h-8 animate-spin text-red-500 mb-2" />
                     <p className="text-zinc-300">{initializationProgress}</p>
                   </div>
                 )}
@@ -872,7 +872,7 @@ export default function Page() {
                     />
                     <Button
                       onClick={handleSaveVideo}
-                      className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700"
+                      className="flex items-center gap-2 bg-red-700 hover:bg-red-800"
                       disabled={!videoName}
                     >
                       <Save className="w-4 h-4" />
