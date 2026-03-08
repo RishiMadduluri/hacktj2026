@@ -203,19 +203,26 @@ export default function SettingsPage() {
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-[#0D0D0D] border border-[#1A1A1A] rounded-2xl p-1">
+      {/* Tabs — underline style */}
+      <div className="flex gap-0 border-b border-[#1A1A1A]">
         {TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setActiveTab(id)}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all flex-1 justify-center ${activeTab === id
-              ? "bg-red-950/30 text-red-400"
-              : "text-zinc-500 hover:text-zinc-300"
+            className={`relative flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all ${activeTab === id
+                ? "text-red-400"
+                : "text-zinc-500 hover:text-zinc-300"
               }`}
           >
             <Icon className="w-4 h-4" />
             <span className="hidden sm:inline">{label}</span>
+            {activeTab === id && (
+              <motion.div
+                layoutId="settings-tab-underline"
+                className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-red-600 to-red-800"
+                transition={{ type: "spring", stiffness: 380, damping: 30 }}
+              />
+            )}
           </button>
         ))}
       </div>
@@ -223,7 +230,7 @@ export default function SettingsPage() {
       {/* Medical Profile Tab */}
       {activeTab === "profile" && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
-          <div className="bg-[#111] border border-[#1F1F1F] rounded-2xl p-6 space-y-6">
+          <div className="bg-[#111] border border-[#1F1F1F] rounded-2xl p-6 space-y-6 accent-stripe overflow-hidden">
             <div>
               <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-4 flex items-center gap-2">
                 <User className="w-3.5 h-3.5" /> Basic Information
@@ -259,7 +266,7 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="bg-[#111] border border-[#1F1F1F] rounded-2xl p-6 space-y-6">
+          <div className="bg-[#111] border border-[#1F1F1F] rounded-2xl p-6 space-y-6 accent-stripe overflow-hidden">
             <div>
               <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-4 flex items-center gap-2">
                 <Heart className="w-3.5 h-3.5" /> Medical Information
@@ -354,11 +361,10 @@ export default function SettingsPage() {
                       <button
                         onClick={() => handleToggleContactPref(contact.id, "notifyCall")}
                         title={contact.notifyCall !== false ? "Call enabled" : "Call disabled"}
-                        className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold border transition-colors ${
-                          contact.notifyCall !== false
+                        className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold border transition-colors ${contact.notifyCall !== false
                             ? "bg-green-950/20 border-green-900/30 text-green-400"
                             : "bg-zinc-900/30 border-zinc-800/30 text-zinc-600"
-                        }`}
+                          }`}
                       >
                         Call
                       </button>
@@ -449,7 +455,7 @@ export default function SettingsPage() {
       {/* Preferences Tab */}
       {activeTab === "preferences" && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
-          <div className="bg-[#111] border border-[#1F1F1F] rounded-2xl p-6 space-y-4">
+          <div className="bg-[#111] border border-[#1F1F1F] rounded-2xl p-6 space-y-4 accent-stripe overflow-hidden">
             <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-2 flex items-center gap-2">
               <Volume2 className="w-3.5 h-3.5" /> Alert Settings
             </h2>

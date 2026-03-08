@@ -14,7 +14,6 @@ import {
   Heart,
   Pill,
   ChevronRight,
-  StopCircle,
   Clock,
   TrendingUp,
   Phone,
@@ -33,6 +32,13 @@ const SEVERITY_COLORS: Record<string, string> = {
   MEDIUM: "text-orange-400 bg-orange-900/20 border-orange-800/50",
   HIGH: "text-red-400 bg-red-900/20 border-red-800/50",
   CRITICAL: "text-red-300 bg-red-950/40 border-red-700/50",
+};
+
+const SEVERITY_ACCENT: Record<string, string> = {
+  LOW: "bg-yellow-500",
+  MEDIUM: "bg-orange-500",
+  HIGH: "bg-red-500",
+  CRITICAL: "bg-red-600",
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -59,6 +65,7 @@ function StatCard({
   sub,
   accent = false,
   trend,
+  accentColor,
 }: {
   label: string;
   value: string | number;
@@ -66,25 +73,35 @@ function StatCard({
   sub?: string;
   accent?: boolean;
   trend?: "up" | "down" | "neutral";
+  accentColor?: string;
 }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`relative overflow-hidden rounded-2xl p-5 border transition-all ${
-        accent
+      className={`relative overflow-hidden p-5 border transition-all clip-angled ${accent
           ? "bg-gradient-to-br from-red-950/40 to-[#111] border-red-900/30"
           : "bg-[#111] border-[#1F1F1F] hover:border-[#2A2A2A]"
-      }`}
+        }`}
     >
+      {/* Top accent line */}
+      <div
+        className="absolute top-0 left-0 right-0 h-[2px]"
+        style={{
+          background: accentColor
+            ? `linear-gradient(90deg, ${accentColor}, transparent)`
+            : accent
+              ? "linear-gradient(90deg, #DC2626, transparent)"
+              : "linear-gradient(90deg, rgba(255,255,255,0.05), transparent)",
+        }}
+      />
       <div className="flex items-start justify-between mb-3">
         <div className={`p-2 rounded-xl ${accent ? "bg-red-600/15" : "bg-white/5"}`}>
           <Icon className={`w-4.5 h-4.5 ${accent ? "text-red-500" : "text-zinc-500"}`} />
         </div>
         {trend && (
-          <div className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
-            trend === "up" ? "bg-red-900/20 text-red-400" : trend === "down" ? "bg-green-900/20 text-green-400" : "bg-zinc-800 text-zinc-500"
-          }`}>
+          <div className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${trend === "up" ? "bg-red-900/20 text-red-400" : trend === "down" ? "bg-green-900/20 text-green-400" : "bg-zinc-800 text-zinc-500"
+            }`}>
             {trend === "up" ? "↑" : trend === "down" ? "↓" : "—"}
           </div>
         )}
@@ -139,12 +156,12 @@ export default function DashboardPage() {
                 localStorage.setItem("firstwatch_location", JSON.stringify(loc));
               }
             })
-            .catch(() => {});
+            .catch(() => { });
         }
         setLocation((prev) => ({ ...loc, address: prev?.address }));
         localStorage.setItem("firstwatch_location", JSON.stringify(loc));
       },
-      () => {},
+      () => { },
       { enableHighAccuracy: true, maximumAge: 10000 }
     );
 
@@ -268,6 +285,9 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Header rule */}
+      <div className="header-rule" />
+
       {/* Emergency Alert Banner */}
       {latestEmergency && (
         <motion.div
@@ -334,7 +354,7 @@ export default function DashboardPage() {
         </Link>
       </motion.div>
 
-      {/* Stats Row */}
+      {/* Stats Row — with angled corners and accent lines */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Today's Alerts"
@@ -343,29 +363,33 @@ export default function DashboardPage() {
           accent={todayIncidents.length > 0}
           sub={todayIncidents.length === 0 ? "All clear today" : `${todayIncidents.filter(i => i.severity === "HIGH" || i.severity === "CRITICAL").length} high severity`}
           trend={todayIncidents.length > 0 ? "up" : "neutral"}
+          accentColor={todayIncidents.length > 0 ? "#DC2626" : undefined}
         />
         <StatCard
           label="This Week"
           value={thisWeekIncidents.length}
           icon={TrendingUp}
           sub={`${highSeverityCount} high severity total`}
+          accentColor="#F97316"
         />
         <StatCard
           label="Total Incidents"
           value={incidents.length}
           icon={Activity}
           sub="All time"
+          accentColor="#EF4444"
         />
         <StatCard
           label="Days Monitored"
           value={daysMonitored}
           icon={Calendar}
           sub="Since setup"
+          accentColor="#991B1B"
         />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Incidents - wider */}
+        {/* Recent Incidents — timeline style */}
         <div className="lg:col-span-2 bg-[#111] border border-[#1F1F1F] rounded-2xl p-6">
           <div className="flex items-center justify-between mb-5">
             <div>
@@ -383,45 +407,63 @@ export default function DashboardPage() {
               <p className="text-zinc-700 text-xs mt-1">Start monitoring to detect events</p>
             </div>
           ) : (
-            <div className="space-y-2">
-              {recentIncidents.map((incident, i) => (
-                <motion.div
-                  key={incident.id}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.05 }}
-                  className="flex items-center gap-3 p-3 bg-[#0D0D0D] rounded-xl hover:bg-[#141414] transition-colors group"
-                >
-                  <div className="text-lg flex-shrink-0">{TYPE_ICONS[incident.type] || "📋"}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-white">
-                        {TYPE_LABELS[incident.type] || incident.type}
-                      </span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-bold ${SEVERITY_COLORS[incident.severity]}`}>
-                        {incident.severity}
-                      </span>
+            <div className="relative">
+              {/* Continuous vertical timeline line */}
+              <div className="absolute left-[11px] top-2 bottom-2 w-[2px] bg-gradient-to-b from-red-600/40 via-red-800/20 to-transparent" />
+
+              <div className="space-y-0">
+                {recentIncidents.map((incident, i) => (
+                  <motion.div
+                    key={incident.id}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="flex items-start gap-4 group relative"
+                  >
+                    {/* Timeline dot */}
+                    <div className="flex-shrink-0 relative z-10 mt-3">
+                      <div className={`w-[10px] h-[10px] rounded-full border-2 ${incident.severity === "CRITICAL" || incident.severity === "HIGH"
+                          ? "border-red-500 bg-red-500/30"
+                          : incident.severity === "MEDIUM"
+                            ? "border-orange-500 bg-orange-500/30"
+                            : "border-yellow-500 bg-yellow-500/30"
+                        }`} />
                     </div>
-                    <p className="text-xs text-zinc-500 truncate mt-0.5">{incident.description}</p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <div className="text-[11px] text-zinc-600">
-                      {new Date(incident.timestamp).toLocaleDateString()}
+
+                    {/* Content */}
+                    <div className="flex-1 pb-5 pl-1">
+                      <div className="p-3 bg-[#0D0D0D] rounded-xl hover:bg-[#141414] transition-colors">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">{TYPE_ICONS[incident.type] || "📋"}</span>
+                          <span className="text-sm font-medium text-white">
+                            {TYPE_LABELS[incident.type] || incident.type}
+                          </span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-bold ${SEVERITY_COLORS[incident.severity]}`}>
+                            {incident.severity}
+                          </span>
+                          <div className="ml-auto text-right flex-shrink-0">
+                            <div className="text-[11px] text-zinc-600">
+                              {new Date(incident.timestamp).toLocaleDateString()}
+                            </div>
+                            <div className="text-[10px] text-zinc-700">
+                              {new Date(incident.timestamp).toLocaleTimeString()}
+                            </div>
+                          </div>
+                        </div>
+                        <p className="text-xs text-zinc-500 truncate mt-1 ml-7">{incident.description}</p>
+                      </div>
                     </div>
-                    <div className="text-[10px] text-zinc-700">
-                      {new Date(incident.timestamp).toLocaleTimeString()}
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
+                  </motion.div>
+                ))}
+              </div>
             </div>
           )}
         </div>
 
-        {/* Right column */}
-        <div className="space-y-4">
+        {/* Right column — overlapping depth effect */}
+        <div className="space-y-0">
           {/* Live Location */}
-          <div className="bg-[#111] border border-[#1F1F1F] rounded-2xl p-5">
+          <div className="bg-[#111] border border-[#1F1F1F] rounded-2xl p-5 relative z-[4]">
             <div className="flex items-center gap-2 mb-3">
               <MapPin className="w-4 h-4 text-red-500" />
               <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Live Location</h3>
@@ -454,8 +496,8 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* Quick Actions */}
-          <div className="bg-[#111] border border-[#1F1F1F] rounded-2xl p-5">
+          {/* Quick Actions — overlaps slightly */}
+          <div className="bg-[#111] border border-[#1F1F1F] rounded-2xl p-5 -mt-2 relative z-[3]">
             <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-3">Quick Actions</h3>
             <div className="space-y-2">
               <Link
@@ -485,8 +527,8 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Emergency Contacts */}
-          <div className="bg-[#111] border border-[#1F1F1F] rounded-2xl p-5">
+          {/* Emergency Contacts — overlaps slightly */}
+          <div className="bg-[#111] border border-[#1F1F1F] rounded-2xl p-5 -mt-2 relative z-[2]">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Emergency Contacts</h3>
               <Link href="/pages/settings" className="text-[10px] text-red-500 hover:text-red-400 transition-colors">
@@ -520,9 +562,9 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* Health Profile */}
+          {/* Health Profile — overlaps slightly */}
           {profile && (
-            <div className="bg-[#111] border border-[#1F1F1F] rounded-2xl p-5">
+            <div className="bg-[#111] border border-[#1F1F1F] rounded-2xl p-5 -mt-2 relative z-[1]">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Health Profile</h3>
                 <Link href="/pages/settings" className="text-[10px] text-red-500 hover:text-red-400 transition-colors">

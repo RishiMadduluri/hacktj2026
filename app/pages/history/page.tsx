@@ -154,9 +154,8 @@ export default function HistoryPage() {
           )}
           <button
             onClick={() => setShowFilters((p) => !p)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm transition-colors ${
-              showFilters ? "bg-red-950/30 border border-red-900/30 text-red-400" : "bg-[#111] border border-[#1F1F1F] text-zinc-400 hover:text-white"
-            }`}
+            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm transition-colors ${showFilters ? "bg-red-950/30 border border-red-900/30 text-red-400" : "bg-[#111] border border-[#1F1F1F] text-zinc-400 hover:text-white"
+              }`}
           >
             <Filter className="w-3.5 h-3.5" />
             Filter
@@ -239,16 +238,19 @@ export default function HistoryPage() {
                 key={sev}
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className={`p-4 rounded-xl border cursor-pointer transition-all ${
-                  filter.severity === sev ? "ring-1 ring-white/10" : ""
-                } ${SEVERITY_COLORS[sev]}`}
+                className={`px-5 py-3 rounded-full border cursor-pointer transition-all relative overflow-hidden ${filter.severity === sev ? "ring-1 ring-white/10" : ""
+                  } ${SEVERITY_COLORS[sev]}`}
                 onClick={() => setFilter((p) => ({ ...p, severity: p.severity === sev ? "ALL" : sev }))}
               >
-                <div className="flex items-center gap-2 mb-1">
-                  <div className={`w-2 h-2 rounded-full ${SEVERITY_DOT[sev]}`} />
-                  <div className="text-xs font-semibold">{sev}</div>
+                {/* Left glow */}
+                <div className={`absolute left-0 top-0 bottom-0 w-8 ${SEVERITY_DOT[sev]} opacity-10 blur-lg`} />
+                <div className="relative flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${SEVERITY_DOT[sev]}`} />
+                    <div className="text-xs font-semibold">{sev}</div>
+                  </div>
+                  <div className="text-2xl font-black">{count}</div>
                 </div>
-                <div className="text-2xl font-black">{count}</div>
               </motion.div>
             );
           })}
@@ -291,8 +293,11 @@ export default function HistoryPage() {
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.03 }}
-                    className="bg-[#111] border border-[#1F1F1F] rounded-xl overflow-hidden hover:border-[#2A2A2A] transition-colors"
+                    className="bg-[#111] border border-[#1F1F1F] rounded-xl overflow-hidden hover:border-[#2A2A2A] transition-colors relative"
                   >
+                    {/* Severity left border accent */}
+                    <div className={`absolute left-0 top-0 bottom-0 w-[4px] ${SEVERITY_DOT[incident.severity] || "bg-zinc-600"
+                      } rounded-l-xl`} />
                     <div className="flex items-start gap-3 p-4">
                       <div className="text-xl flex-shrink-0 mt-0.5">
                         {TYPE_ICONS[incident.type] || "📋"}

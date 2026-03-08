@@ -10,7 +10,6 @@ import {
   Settings,
   LogOut,
   Activity,
-  ChevronRight,
   Users,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -30,6 +29,7 @@ export default function PagesLayout({ children }: { children: React.ReactNode })
   const [userEmail, setUserEmail] = useState<string>("");
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [incidentCount, setIncidentCount] = useState(0);
+  const [hoveredNav, setHoveredNav] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
@@ -61,19 +61,54 @@ export default function PagesLayout({ children }: { children: React.ReactNode })
   return (
     <div className="flex min-h-screen bg-[#0A0A0A]">
       <OrgAlertListener />
-      {/* Sidebar */}
-      <aside className="w-64 flex-shrink-0 bg-[#080808] border-r border-[#1A1A1A] flex flex-col fixed h-full z-30">
-        {/* Logo */}
+      {/* Sidebar with wave edge */}
+      <aside className="w-64 flex-shrink-0 bg-[#080808] flex flex-col fixed h-full z-30 sidebar-wave">
+        {/* Logo + monitoring status (moved up) */}
         <div className="p-5 border-b border-[#1A1A1A]">
           <Link href="/protected" className="flex items-center gap-2.5 group">
             <div className="p-1.5 rounded-lg bg-red-600/10 group-hover:bg-red-600/20 transition-colors">
               <Activity className="w-5 h-5 text-red-500" />
             </div>
-            <div>
+            <div className="flex-1">
               <span className="text-red-500 font-black tracking-widest text-xs block">FIRSTWATCH</span>
               <span className="text-zinc-600 text-[10px] tracking-wider">AI MEDICAL GUARDIAN</span>
             </div>
+            {/* Mini ECG pulse */}
+            <svg viewBox="0 0 60 20" className="w-10 h-4 flex-shrink-0">
+              <path
+                d="M0,10 L10,10 L15,2 L20,18 L25,10 L35,10 L40,2 L45,18 L50,10 L60,10"
+                fill="none"
+                stroke="#DC2626"
+                strokeWidth="1.5"
+                className="mini-ecg"
+                opacity="0.5"
+              />
+            </svg>
           </Link>
+
+          {/* Monitoring status — floated just below logo for prominence */}
+          <div className={`mt-3 flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-all ${isMonitoring
+              ? "bg-red-950/20 border border-red-900/20"
+              : "bg-[#0D0D0D] border border-transparent"
+            }`}>
+            <div className="relative">
+              <div className={`w-2 h-2 rounded-full ${isMonitoring ? "bg-red-500" : "bg-zinc-600"}`} />
+              {isMonitoring && (
+                <div className="absolute inset-0 w-2 h-2 rounded-full bg-red-500 animate-ping opacity-75" />
+              )}
+            </div>
+            <div className="flex-1">
+              <div className={`text-[10px] font-semibold ${isMonitoring ? "text-red-400" : "text-zinc-500"}`}>
+                {isMonitoring ? "Monitoring Active" : "Not Monitoring"}
+              </div>
+              {isMonitoring && (
+                <div className="text-[9px] text-red-500/40">AI analyzing feed</div>
+              )}
+            </div>
+            {isMonitoring && (
+              <div className="w-1.5 h-1.5 rounded-full bg-red-500 status-pulse" />
+            )}
+          </div>
         </div>
 
         {/* Navigation */}
@@ -81,13 +116,16 @@ export default function PagesLayout({ children }: { children: React.ReactNode })
           <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest px-3 pt-3 pb-2">Navigation</p>
           {navItems.map(({ href, label, icon: Icon, desc }) => {
             const active = pathname === href || (href !== "/protected" && pathname.startsWith(href));
+            const isHovered = hoveredNav === href;
             return (
               <Link
                 key={href}
                 href={href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all group ${active
-                  ? "bg-red-950/30 text-red-400"
-                  : "text-zinc-500 hover:bg-[#111] hover:text-zinc-300"
+                onMouseEnter={() => setHoveredNav(href)}
+                onMouseLeave={() => setHoveredNav(null)}
+                className={`relative flex items-center gap-3 pl-4 pr-3 py-2.5 text-sm transition-all group ${active
+                  ? "text-red-400 nav-accent-bar"
+                  : "text-zinc-500 hover:text-zinc-300"
                   }`}
               >
                 <div className={`p-1.5 rounded-lg ${active ? "bg-red-600/15" : "bg-transparent group-hover:bg-white/5"} transition-colors`}>
@@ -95,14 +133,20 @@ export default function PagesLayout({ children }: { children: React.ReactNode })
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-[13px] leading-tight">{label}</div>
-                  <div className={`text-[10px] ${active ? "text-red-500/50" : "text-zinc-700"} leading-tight`}>{desc}</div>
+                  {/* Description slides in on hover */}
+                  <div
+                    className={`text-[10px] leading-tight overflow-hidden transition-all duration-300 ${active ? "text-red-500/50 max-h-4 opacity-100" :
+                        isHovered ? "text-zinc-600 max-h-4 opacity-100" : "max-h-0 opacity-0"
+                      }`}
+                  >
+                    {desc}
+                  </div>
                 </div>
                 {label === "History" && incidentCount > 0 && (
                   <span className="text-[10px] font-bold bg-red-600/20 text-red-400 px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
                     {incidentCount}
                   </span>
                 )}
-                {active && <ChevronRight className="w-3 h-3 text-red-500/50" />}
               </Link>
             );
           })}
@@ -110,27 +154,6 @@ export default function PagesLayout({ children }: { children: React.ReactNode })
 
         {/* Bottom section */}
         <div className="p-3 border-t border-[#1A1A1A] space-y-2">
-          {/* Monitoring status */}
-          <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl ${isMonitoring ? "bg-red-950/20" : "bg-[#111]"}`}>
-            <div className="relative">
-              <div className={`w-2.5 h-2.5 rounded-full ${isMonitoring ? "bg-red-500" : "bg-zinc-600"}`} />
-              {isMonitoring && (
-                <div className="absolute inset-0 w-2.5 h-2.5 rounded-full bg-red-500 animate-ping opacity-75" />
-              )}
-            </div>
-            <div className="flex-1">
-              <div className={`text-[11px] font-semibold ${isMonitoring ? "text-red-400" : "text-zinc-500"}`}>
-                {isMonitoring ? "Monitoring Active" : "Not Monitoring"}
-              </div>
-              {isMonitoring && (
-                <div className="text-[10px] text-red-500/40">AI analyzing feed</div>
-              )}
-            </div>
-            {isMonitoring && (
-              <div className="w-1.5 h-1.5 rounded-full bg-red-500 status-pulse" />
-            )}
-          </div>
-
           {/* User info */}
           <div className="px-3 py-2">
             <p className="text-[11px] text-zinc-600 truncate">{userEmail}</p>

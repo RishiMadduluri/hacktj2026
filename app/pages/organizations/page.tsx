@@ -190,7 +190,7 @@ export default function OrganizationsPage() {
               onChange={(e) => setCreateName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleCreate()}
               placeholder="Organization name"
-              className="flex-1 bg-[#1A1A1A] border border-[#2A2A2A] rounded-xl px-3 py-2.5 text-white text-sm placeholder-zinc-600 focus:outline-none focus:border-red-600/50"
+              className="flex-1 bg-transparent border-b border-[#2A2A2A] px-1 py-2.5 text-white text-sm placeholder-zinc-600 focus:outline-none focus:border-red-600/50 transition-colors"
             />
             <button
               onClick={handleCreate}
@@ -212,7 +212,7 @@ export default function OrganizationsPage() {
               onKeyDown={(e) => e.key === "Enter" && handleJoin()}
               placeholder="6-character invite code"
               maxLength={6}
-              className="flex-1 bg-[#1A1A1A] border border-[#2A2A2A] rounded-xl px-3 py-2.5 text-white text-sm placeholder-zinc-600 focus:outline-none focus:border-red-600/50 font-mono tracking-widest uppercase"
+              className="flex-1 bg-transparent border-b border-[#2A2A2A] px-1 py-2.5 text-white text-sm placeholder-zinc-600 focus:outline-none focus:border-red-600/50 font-mono tracking-widest uppercase transition-colors"
             />
             <button
               onClick={handleJoin}
@@ -246,7 +246,7 @@ export default function OrganizationsPage() {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.05 }}
-              className="bg-[#111] border border-[#1F1F1F] rounded-2xl p-5 hover:border-[#2A2A2A] transition-colors"
+              className="bg-[#111] border border-[#1F1F1F] rounded-2xl p-5 hover:border-[#2A2A2A] transition-colors top-stripe overflow-hidden"
             >
               <div className="flex items-center gap-4">
                 <div className="p-2.5 rounded-xl bg-red-600/10">
@@ -276,11 +276,10 @@ export default function OrganizationsPage() {
                   {/* Camera toggle */}
                   <button
                     onClick={() => handleToggleCamera(org.orgId, org.cameraEnabled)}
-                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-colors ${
-                      org.cameraEnabled
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-colors ${org.cameraEnabled
                         ? "bg-green-950/20 border border-green-800/40 text-green-400"
                         : "bg-zinc-800 border border-zinc-700 text-zinc-500"
-                    }`}
+                      }`}
                   >
                     {org.cameraEnabled ? <Video className="w-3.5 h-3.5" /> : <VideoOff className="w-3.5 h-3.5" />}
                     {org.cameraEnabled ? "Sharing" : "Off"}
