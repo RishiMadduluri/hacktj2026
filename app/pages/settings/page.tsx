@@ -99,6 +99,7 @@ export default function SettingsPage() {
   const [testAlertResult, setTestAlertResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const [verbalCheckIn, setVerbalCheckIn] = useState(true);
+  const [callEMS, setCallEMS] = useState(true);
 
   useEffect(() => {
     const p = localStorage.getItem("firstwatch_profile");
@@ -107,6 +108,8 @@ export default function SettingsPage() {
     if (c) setContacts(JSON.parse(c));
     const vc = localStorage.getItem("firstwatch_verbal_checkin");
     if (vc !== null) setVerbalCheckIn(vc === "true");
+    const ems = localStorage.getItem("firstwatch_call_ems");
+    if (ems !== null) setCallEMS(ems === "true");
   }, []);
 
   const setField = (key: keyof MedicalProfile, value: string | number | string[]) =>
@@ -133,12 +136,21 @@ export default function SettingsPage() {
       ...newContact,
       id: Date.now().toString(),
       priority: contacts.length + 1,
+      notifyCall: true,
     };
     const updated = [...contacts, contact];
     setContacts(updated);
     localStorage.setItem("firstwatch_contacts", JSON.stringify(updated));
     setNewContact({ name: "", phone: "", email: "", relationship: "" });
     setShowAddContact(false);
+  };
+
+  const handleToggleContactPref = (id: string, pref: "notifyCall") => {
+    const updated = contacts.map((c) =>
+      c.id === id ? { ...c, [pref]: c[pref] === false ? true : !(c[pref] ?? true) } : c
+    );
+    setContacts(updated);
+    localStorage.setItem("firstwatch_contacts", JSON.stringify(updated));
   };
 
   const handleDeleteContact = (id: string) => {
@@ -149,6 +161,7 @@ export default function SettingsPage() {
 
   const handleSavePreferences = () => {
     localStorage.setItem("firstwatch_verbal_checkin", String(verbalCheckIn));
+    localStorage.setItem("firstwatch_call_ems", String(callEMS));
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -320,6 +333,19 @@ export default function SettingsPage() {
                       <div className="text-xs text-zinc-500">{contact.relationship} · {contact.phone}</div>
                       {contact.email && <div className="text-xs text-zinc-600">{contact.email}</div>}
                     </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => handleToggleContactPref(contact.id, "notifyCall")}
+                        title={contact.notifyCall !== false ? "Call enabled" : "Call disabled"}
+                        className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold border transition-colors ${
+                          contact.notifyCall !== false
+                            ? "bg-green-950/20 border-green-900/30 text-green-400"
+                            : "bg-zinc-900/30 border-zinc-800/30 text-zinc-600"
+                        }`}
+                      >
+                        Call
+                      </button>
+                    </div>
                     <button onClick={() => handleDeleteContact(contact.id)} className="p-1.5 rounded-lg hover:bg-red-950/30 text-zinc-700 hover:text-red-400 transition-colors flex-shrink-0">
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -375,13 +401,12 @@ export default function SettingsPage() {
                       });
                       const data = await res.json();
                       if (data.success) {
-                        const smsCount = data.results.filter((r: any) => r.smsSent).length;
                         const callCount = data.results.filter((r: any) => r.callMade).length;
                         setTestAlertResult({
                           success: true,
                           message: data.twilioEnabled
-                            ? `Test sent! ${smsCount} SMS, ${callCount} call(s) delivered`
-                            : `Test sent! (Twilio disabled — add credentials to enable SMS & calls)`,
+                            ? `Test sent! ${callCount} call(s) delivered`
+                            : `Test sent! (Twilio disabled — add credentials to enable calls)`,
                         });
                       } else {
                         setTestAlertResult({ success: false, message: data.error || "Failed to send" });
@@ -449,14 +474,21 @@ export default function SettingsPage() {
               <span className="px-2.5 py-1 bg-green-950/30 border border-green-800/40 rounded-full text-green-400 text-xs font-bold flex-shrink-0">ON</span>
             </div>
 
-            <div className="flex items-start gap-3 p-4 bg-[#0D0D0D] rounded-xl">
-              <div className="flex-1">
+            <div className="flex items-start justify-between gap-4 p-4 bg-[#0D0D0D] rounded-xl">
+              <div>
                 <div className="font-medium text-white text-sm">EMS Auto-Call</div>
                 <div className="text-xs text-zinc-600 mt-0.5">
                   Automatically calls EMS with patient details and incident report when an emergency is detected. Set the EMS phone number in your environment configuration.
                 </div>
               </div>
-              <span className="px-2.5 py-1 bg-green-950/30 border border-green-800/40 rounded-full text-green-400 text-xs font-bold flex-shrink-0">ON</span>
+              <button
+                onClick={() => setCallEMS((p) => !p)}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full transition-colors ${callEMS ? "bg-red-600" : "bg-zinc-700"}`}
+              >
+                <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform mt-0.5`}
+                  style={{ transform: callEMS ? "translateX(22px)" : "translateX(2px)" }}
+                />
+              </button>
             </div>
           </div>
 

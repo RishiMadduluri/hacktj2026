@@ -22,6 +22,7 @@ import {
   ArrowUpRight,
   ShieldCheck,
   Eye,
+  MapPin,
 } from "lucide-react";
 import type { MedicalProfile, Incident, EmergencyContact } from "@/types/medical";
 
@@ -102,10 +103,50 @@ export default function DashboardPage() {
   const [daysMonitored, setDaysMonitored] = useState(0);
   const [latestEmergency, setLatestEmergency] = useState<Incident | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [location, setLocation] = useState<{ lat: number; lng: number; address?: string } | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(timer);
+  }, []);
+
+  // Geolocation watcher
+  useEffect(() => {
+    // Load cached location
+    const cached = localStorage.getItem("firstwatch_location");
+    if (cached) setLocation(JSON.parse(cached));
+
+    if (typeof navigator === "undefined" || !navigator.geolocation) return;
+
+    let lastGeocode = 0;
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const loc: { lat: number; lng: number; address?: string } = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        };
+        const now = Date.now();
+        if (now - lastGeocode > 30000) {
+          lastGeocode = now;
+          fetch(`https://nominatim.openstreetmap.org/reverse?lat=${loc.lat}&lon=${loc.lng}&format=json`)
+            .then((r) => r.json())
+            .then((data) => {
+              if (data.display_name) {
+                loc.address = data.display_name;
+                setLocation({ ...loc });
+                localStorage.setItem("firstwatch_location", JSON.stringify(loc));
+              }
+            })
+            .catch(() => {});
+        }
+        setLocation((prev) => ({ ...loc, address: prev?.address }));
+        localStorage.setItem("firstwatch_location", JSON.stringify(loc));
+      },
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 10000 }
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
   }, []);
 
   useEffect(() => {
@@ -368,6 +409,40 @@ export default function DashboardPage() {
 
         {/* Right column */}
         <div className="space-y-4">
+          {/* Live Location */}
+          <div className="bg-[#111] border border-[#1F1F1F] rounded-2xl p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <MapPin className="w-4 h-4 text-red-500" />
+              <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Live Location</h3>
+            </div>
+            {location ? (
+              <div className="space-y-2">
+                {location.address && (
+                  <p className="text-sm text-zinc-300 leading-relaxed">{location.address}</p>
+                )}
+                <p className="text-xs text-zinc-600 font-mono">
+                  {location.lat.toFixed(5)}, {location.lng.toFixed(5)}
+                </p>
+                <a
+                  href={`https://maps.google.com/?q=${location.lat},${location.lng}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs text-red-500 hover:text-red-400 transition-colors mt-1"
+                >
+                  <MapPin className="w-3 h-3" />
+                  View on map
+                  <ArrowUpRight className="w-3 h-3" />
+                </a>
+              </div>
+            ) : (
+              <div className="text-center py-4">
+                <MapPin className="w-8 h-8 text-zinc-800 mx-auto mb-2" />
+                <p className="text-zinc-600 text-sm">Location not available</p>
+                <p className="text-zinc-700 text-xs mt-1">Enable location access in your browser</p>
+              </div>
+            )}
+          </div>
+
           {/* Quick Actions */}
           <div className="bg-[#111] border border-[#1F1F1F] rounded-2xl p-5">
             <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-3">Quick Actions</h3>

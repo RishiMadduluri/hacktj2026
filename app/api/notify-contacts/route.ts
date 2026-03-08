@@ -3,18 +3,20 @@ import { NextResponse } from "next/server";
 let twilioClient: any = null;
 try {
     if (
+        process.env.TWILIO_API_KEY_SID &&
+        process.env.TWILIO_API_KEY_SECRET &&
         process.env.TWILIO_ACCOUNT_SID &&
-        process.env.TWILIO_ACCOUNT_AUTH_TOKEN &&
         process.env.TWILIO_PHONE_NUMBER
     ) {
         const twilio = require("twilio");
         twilioClient = twilio(
-            process.env.TWILIO_ACCOUNT_SID,
-            process.env.TWILIO_ACCOUNT_AUTH_TOKEN
+            process.env.TWILIO_API_KEY_SID,
+            process.env.TWILIO_API_KEY_SECRET,
+            { accountSid: process.env.TWILIO_ACCOUNT_SID }
         );
     }
 } catch {
-    console.warn("Twilio not available — SMS/Call notifications disabled");
+    console.warn("Twilio not available — Call notifications disabled");
 }
 
 interface ContactInput {
@@ -23,6 +25,7 @@ interface ContactInput {
     email: string;
     relationship: string;
     priority: number;
+    notifyCall?: boolean;
 }
 
 interface IncidentInput {
@@ -32,6 +35,7 @@ interface IncidentInput {
     timestamp: string;
     transcript?: string;
 }
+
 
 interface ProfileInput {
     name: string;
@@ -44,129 +48,86 @@ interface ProfileInput {
     weight: string;
 }
 
-function buildSMSBody(
-    incident: IncidentInput,
-    profile: ProfileInput
-): string {
-    let msg = `🚨 FIRSTWATCH EMERGENCY ALERT\n`;
-    msg += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-    msg += `${incident.severity} ${incident.type} DETECTED\n\n`;
-    msg += `${incident.description}\n\n`;
-    msg += `PATIENT DETAILS:\n`;
-    msg += `Name: ${profile.name}\n`;
-    msg += `Age: ${profile.age} years old\n`;
-    msg += `Blood Type: ${profile.bloodType}\n`;
-    if (profile.height) msg += `Height: ${profile.height}\n`;
-    if (profile.weight) msg += `Weight: ${profile.weight}\n`;
-    if (profile.allergies.length > 0)
-        msg += `⚠️ ALLERGIES: ${profile.allergies.join(", ")}\n`;
-    if (profile.conditions.length > 0)
-        msg += `Conditions: ${profile.conditions.join(", ")}\n`;
-    if (profile.medications.length > 0)
-        msg += `Medications: ${profile.medications.join(", ")}\n`;
-    if (incident.transcript)
-        msg += `\nAudio transcript: "${incident.transcript}"\n`;
-    msg += `\nDetected: ${new Date(incident.timestamp).toLocaleString()}`;
-    msg += `\n━━━━━━━━━━━━━━━━━━━━━━`;
-    msg += `\nPlease check on the patient immediately.`;
-    return msg;
+interface LocationInput {
+    lat: number;
+    lng: number;
+    address?: string;
+}
+
+function buildLocationText(location?: LocationInput): string {
+    if (!location) return "";
+    const mapLink = `https://maps.google.com/?q=${location.lat},${location.lng}`;
+    if (location.address) {
+        return `Location: ${location.address}\nCoordinates: ${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}\nMap: ${mapLink}`;
+    }
+    return `Location: ${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}\nMap: ${mapLink}`;
 }
 
 function buildCallTwiML(
     incident: IncidentInput,
-    profile: ProfileInput
+    profile: ProfileInput,
+    contactName: string,
+    contactRelationship: string,
+    location?: LocationInput
 ): string {
     const allergiesText = profile.allergies.length > 0
-        ? `Important warning: The patient has known allergies to ${profile.allergies.join(" and ")}. Please ensure medical responders are aware.`
+        ? ` Known allergies include ${profile.allergies.join(" and ")}.`
+        : " No known allergies.";
+    const locationSay = location
+        ? ` Their current location is ${location.address || `latitude ${location.lat.toFixed(4)}, longitude ${location.lng.toFixed(4)}`}. I repeat, ${location.address || `latitude ${location.lat.toFixed(4)}, longitude ${location.lng.toFixed(4)}`}.`
+        : " Location is currently unavailable.";
+    const conditionsText = profile.conditions && profile.conditions.length > 0
+        ? ` They have the following medical conditions: ${profile.conditions.join(", ")}.`
         : "";
-    const conditionsText = profile.conditions.length > 0
-        ? `The patient has the following medical conditions: ${profile.conditions.join(", ")}.`
-        : "";
-    const medsText = profile.medications.length > 0
-        ? `They are currently taking: ${profile.medications.join(", ")}.`
+    const medsText = profile.medications && profile.medications.length > 0
+        ? ` Current medications: ${profile.medications.join(", ")}.`
         : "";
 
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Pause length="1"/>
   <Say voice="alice" language="en-US">
-    This is an urgent emergency alert from First Watch, an A.I. medical monitoring system.
+    Hello ${contactName}. This is an urgent emergency call from First Watch Medical Monitoring. Your ${contactRelationship}, ${profile.name}, may need immediate help. Our system has detected a ${incident.severity} severity ${incident.type.toLowerCase()} event. Here is what happened: ${incident.description}. Patient details: ${profile.name}, age ${profile.age}, blood type ${profile.bloodType}.${allergiesText}${conditionsText}${medsText}${locationSay} Please try to reach ${profile.name} immediately or call 9 1 1 if you cannot. This message will now repeat.
   </Say>
-  <Pause length="0.5"/>
+  <Pause length="2"/>
   <Say voice="alice" language="en-US">
-    A ${incident.severity} severity ${incident.type} event has been detected for patient ${profile.name}.
-    ${incident.description}.
-  </Say>
-  <Pause length="0.5"/>
-  <Say voice="alice" language="en-US">
-    Patient details: ${profile.name}, ${profile.age} years old, blood type ${profile.bloodType}.
-    ${allergiesText}
-    ${conditionsText}
-    ${medsText}
-  </Say>
-  <Pause length="0.5"/>
-  <Say voice="alice" language="en-US">
-    Please check on the patient immediately. This alert was detected at ${new Date(incident.timestamp).toLocaleTimeString()}.
-  </Say>
-  <Pause length="1"/>
-  <Say voice="alice" language="en-US">
-    Repeating: This is a First Watch emergency alert for patient ${profile.name}. A ${incident.type} event with ${incident.severity} severity has been detected. Please respond immediately.
+    Repeating: ${contactName}, this is First Watch. ${profile.name} has experienced a ${incident.severity} severity ${incident.type.toLowerCase()} event.${locationSay} Please respond immediately.
   </Say>
 </Response>`;
 }
 
 function buildEMSCallTwiML(
     incident: IncidentInput,
-    profile: ProfileInput
+    profile: ProfileInput,
+    location?: LocationInput
 ): string {
     const allergiesText = profile.allergies.length > 0
-        ? `Critical allergy information: The patient is allergic to ${profile.allergies.join(" and ")}. Please ensure all responding medical personnel are aware of these allergies.`
-        : "No known allergies on file.";
+        ? ` Patient has allergies to ${profile.allergies.join(" and ")}.`
+        : " No known drug allergies.";
     const conditionsText = profile.conditions.length > 0
-        ? `Pre-existing conditions include ${profile.conditions.join(", ")}.`
-        : "";
+        ? ` Pre-existing conditions: ${profile.conditions.join(", ")}.`
+        : " No known pre-existing conditions.";
     const medsText = profile.medications.length > 0
-        ? `Current medications: ${profile.medications.join(", ")}.`
+        ? ` Current medications: ${profile.medications.join(", ")}.`
         : "";
+    const locationSay = location
+        ? ` The patient is located at ${location.address || `latitude ${location.lat.toFixed(4)}, longitude ${location.lng.toFixed(4)}`}. Repeating the address: ${location.address || `latitude ${location.lat.toFixed(4)}, longitude ${location.lng.toFixed(4)}`}.`
+        : " Patient location is currently unavailable.";
 
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Pause length="1"/>
   <Say voice="alice" language="en-US">
-    Hello, this is an automated emergency call from First Watch, an A.I. medical monitoring system. We have detected a medical emergency that requires immediate assistance.
+    Dispatcher, this is an automated emergency call from First Watch Medical Monitoring System. We are requesting immediate medical assistance. Incident report: a ${incident.severity} severity ${incident.type.toLowerCase()} has been detected by our A.I. monitoring system. Incident details: ${incident.description || `A ${incident.type.toLowerCase()} event was detected.`} Patient information: name, ${profile.name}. Age, ${profile.age}. Blood type, ${profile.bloodType}. ${profile.height ? `Height, ${profile.height}.` : ""} ${profile.weight ? `Weight, ${profile.weight}.` : ""}${allergiesText}${conditionsText}${medsText}${locationSay} Emergency contacts have been notified. Please dispatch emergency medical services to the patient's location immediately. This message will now repeat.
   </Say>
-  <Pause length="0.8"/>
+  <Pause length="2"/>
   <Say voice="alice" language="en-US">
-    A ${incident.severity} severity ${incident.type.toLowerCase()} event has been detected. ${incident.description}.
-  </Say>
-  <Pause length="0.5"/>
-  <Say voice="alice" language="en-US">
-    The patient is ${profile.name}, ${profile.age} years old, with blood type ${profile.bloodType}.
-    ${profile.height ? `Height: ${profile.height}.` : ""}
-    ${profile.weight ? `Weight: ${profile.weight}.` : ""}
-  </Say>
-  <Pause length="0.5"/>
-  <Say voice="alice" language="en-US">
-    ${allergiesText}
-    ${conditionsText}
-    ${medsText}
-  </Say>
-  <Pause length="0.5"/>
-  <Say voice="alice" language="en-US">
-    This event was detected at ${new Date(incident.timestamp).toLocaleTimeString()} on ${new Date(incident.timestamp).toLocaleDateString()}.
-    The patient's emergency contacts have also been notified.
-    Please dispatch emergency medical services to the patient's location as soon as possible.
-  </Say>
-  <Pause length="1"/>
-  <Say voice="alice" language="en-US">
-    To repeat: Patient ${profile.name}, age ${profile.age}, is experiencing a ${incident.type.toLowerCase()} emergency classified as ${incident.severity} severity. Immediate medical assistance is required. Thank you.
+    Repeating: Dispatcher, this is First Watch requesting E.M.S. dispatch. ${incident.severity} severity ${incident.type.toLowerCase()} detected. Patient: ${profile.name}, age ${profile.age}.${locationSay} Please dispatch immediately.
   </Say>
 </Response>`;
 }
 
 export async function POST(request: Request) {
     try {
-        const { incident, contacts, profile, isTest, callEMS } = await request.json();
+        const { incident, contacts, profile, isTest, callEMS, location } = await request.json();
 
         if ((!contacts || contacts.length === 0) && !callEMS) {
             return NextResponse.json(
@@ -177,9 +138,7 @@ export async function POST(request: Request) {
 
         const results: {
             contactName: string;
-            smsSent: boolean;
             callMade: boolean;
-            smsError?: string;
             callError?: string;
         }[] = [];
 
@@ -188,14 +147,10 @@ export async function POST(request: Request) {
                 (a.priority || 0) - (b.priority || 0)
         );
 
-        const smsBody = buildSMSBody(incident, profile);
-        const twiml = buildCallTwiML(incident, profile);
-
         // Notify all emergency contacts
         for (const contact of sorted) {
             const result: (typeof results)[0] = {
                 contactName: contact.name,
-                smsSent: false,
                 callMade: false,
             };
 
@@ -207,21 +162,9 @@ export async function POST(request: Request) {
                         : `+1${phoneNumber}`;
                 }
 
-                // Send SMS
-                try {
-                    await twilioClient.messages.create({
-                        body: isTest ? `[TEST] ${smsBody}` : smsBody,
-                        from: process.env.TWILIO_PHONE_NUMBER,
-                        to: phoneNumber,
-                    });
-                    result.smsSent = true;
-                } catch (err: any) {
-                    result.smsError = err.message || "SMS send failed";
-                    console.error(`[FirstWatch] SMS error to ${contact.name}:`, err.message);
-                }
-
-                // Make emergency call for HIGH/CRITICAL (skip for test)
-                if (!isTest && (incident.severity === "CRITICAL" || incident.severity === "HIGH")) {
+                // Make emergency call for HIGH/CRITICAL (respect per-contact preference, skip for test)
+                if (contact.notifyCall !== false && !isTest && (incident.severity === "CRITICAL" || incident.severity === "HIGH")) {
+                    const twiml = buildCallTwiML(incident, profile, contact.name, contact.relationship || "contact", location);
                     try {
                         await twilioClient.calls.create({
                             twiml: twiml,
@@ -235,8 +178,8 @@ export async function POST(request: Request) {
                     }
                 }
 
-                // Test call
-                if (isTest) {
+                // Test call (respect per-contact call preference)
+                if (contact.notifyCall !== false && isTest) {
                     try {
                         await twilioClient.calls.create({
                             twiml: `<?xml version="1.0" encoding="UTF-8"?>
@@ -255,10 +198,7 @@ export async function POST(request: Request) {
                     }
                 }
             } else if (contact.phone && !twilioClient) {
-                result.smsError = "Twilio not configured";
                 result.callError = "Twilio not configured";
-            } else {
-                result.smsError = "No phone number";
             }
 
             results.push(result);
@@ -269,7 +209,6 @@ export async function POST(request: Request) {
             const emsPhone = process.env.EMS_PHONE_NUMBER;
             const emsResult: (typeof results)[0] = {
                 contactName: "EMS (911)",
-                smsSent: false,
                 callMade: false,
             };
 
@@ -281,7 +220,7 @@ export async function POST(request: Request) {
                         : `+1${phoneNumber}`;
                 }
 
-                const emsTwiml = buildEMSCallTwiML(incident, profile);
+                const emsTwiml = buildEMSCallTwiML(incident, profile, location);
                 try {
                     await twilioClient.calls.create({
                         twiml: emsTwiml,

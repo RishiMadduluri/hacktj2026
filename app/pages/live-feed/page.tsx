@@ -12,7 +12,6 @@ import {
   MicOff,
   CheckCircle,
   Bell,
-  MessageSquare,
   Phone,
   X,
   ShieldAlert,
@@ -57,7 +56,7 @@ const TYPE_ICONS: Record<string, string> = {
 interface NotificationLog {
   id: string;
   contactName: string;
-  method: "sms" | "call" | "ems";
+  method: "call" | "ems";
   success: boolean;
   error?: string;
   timestamp: Date;
@@ -84,6 +83,9 @@ export default function LiveFeedPage() {
   const [audioRecordingTime, setAudioRecordingTime] = useState(0);
   const [elapsedTime, setElapsedTime] = useState("00:00");
   const [frameCount, setFrameCount] = useState(0);
+  const [location, setLocation] = useState<{ lat: number; lng: number; address?: string } | null>(null);
+  const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
+  const [userConfirmedOkay, setUserConfirmedOkay] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -103,6 +105,10 @@ export default function LiveFeedPage() {
   const audioChunksRef = useRef<Blob[]>([]);
   const audioTimerRef = useRef<NodeJS.Timeout | null>(null);
   const elapsedTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const geoWatchIdRef = useRef<number | null>(null);
+  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const countdownCallbackRef = useRef<(() => void) | null>(null);
+  const userConfirmedOkayRef = useRef(false);
 
   useEffect(() => {
     setIsClient(true);
@@ -115,6 +121,44 @@ export default function LiveFeedPage() {
 
     alertAudioRef.current = new Audio("/alert.mp3");
     alertAudioRef.current.volume = 0.8;
+
+    // Start geolocation watcher
+    if (typeof navigator !== "undefined" && navigator.geolocation) {
+      let lastGeocode = 0;
+      geoWatchIdRef.current = navigator.geolocation.watchPosition(
+        (pos) => {
+          const loc: { lat: number; lng: number; address?: string } = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+          };
+          // Reverse geocode at most once every 30 seconds
+          const now = Date.now();
+          if (now - lastGeocode > 30000) {
+            lastGeocode = now;
+            fetch(`https://nominatim.openstreetmap.org/reverse?lat=${loc.lat}&lon=${loc.lng}&format=json`)
+              .then((r) => r.json())
+              .then((data) => {
+                if (data.display_name) {
+                  loc.address = data.display_name;
+                  setLocation({ ...loc });
+                  localStorage.setItem("firstwatch_location", JSON.stringify(loc));
+                }
+              })
+              .catch(() => {});
+          }
+          setLocation((prev) => ({ ...loc, address: prev?.address }));
+          localStorage.setItem("firstwatch_location", JSON.stringify({ ...loc, address: location?.address }));
+        },
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 10000 }
+      );
+    }
+
+    return () => {
+      if (geoWatchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(geoWatchIdRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -224,7 +268,22 @@ export default function LiveFeedPage() {
       for (let i = e.resultIndex; i < e.results.length; i++) {
         if (e.results[i].isFinal) final += e.results[i][0].transcript;
       }
-      if (final) setTranscript((p) => p + " " + final);
+      if (final) {
+        setTranscript((p) => p + " " + final);
+        // Detect verbal "I'm okay" / "I am okay" confirmation
+        const lower = final.toLowerCase();
+        if (emergencyDetectedRef.current && !userConfirmedOkayRef.current &&
+            (lower.includes("i'm okay") || lower.includes("i am okay") || lower.includes("im okay") || lower.includes("i'm fine") || lower.includes("i am fine"))) {
+          userConfirmedOkayRef.current = true;
+          setUserConfirmedOkay(true);
+          if (countdownTimerRef.current) {
+            clearInterval(countdownTimerRef.current);
+            countdownTimerRef.current = null;
+          }
+          countdownCallbackRef.current = null;
+          setCountdownSeconds(null);
+        }
+      }
     };
     recognitionRef.current = rec;
   }, []);
@@ -377,6 +436,9 @@ export default function LiveFeedPage() {
     const storedProfile = JSON.parse(localStorage.getItem("firstwatch_profile") || "null");
     if (!storedProfile) return;
 
+    const emsEnabled = localStorage.getItem("firstwatch_call_ems") !== "false";
+    const storedLocation = JSON.parse(localStorage.getItem("firstwatch_location") || "null");
+
     setIsNotifying(true);
 
     try {
@@ -393,7 +455,8 @@ export default function LiveFeedPage() {
           },
           contacts,
           profile: storedProfile,
-          callEMS: true,
+          callEMS: emsEnabled,
+          location: storedLocation,
         }),
       });
       const data = await res.json();
@@ -412,23 +475,13 @@ export default function LiveFeedPage() {
             });
           } else {
             newLogs.push({
-              id: Date.now().toString() + "-sms-" + r.contactName,
+              id: Date.now().toString() + "-call-" + r.contactName,
               contactName: r.contactName,
-              method: "sms",
-              success: r.smsSent,
-              error: r.smsError,
+              method: "call",
+              success: r.callMade,
+              error: r.callError,
               timestamp: new Date(),
             });
-            if (r.callMade || r.callError) {
-              newLogs.push({
-                id: Date.now().toString() + "-call-" + r.contactName,
-                contactName: r.contactName,
-                method: "call",
-                success: r.callMade,
-                error: r.callError,
-                timestamp: new Date(),
-              });
-            }
           }
         }
         setNotificationLogs((prev) => [...newLogs, ...prev].slice(0, 50));
@@ -579,8 +632,28 @@ export default function LiveFeedPage() {
         localStorage.setItem("firstwatch_incidents", JSON.stringify(existing));
         window.dispatchEvent(new Event("storage"));
 
-        // 6. Notify emergency contacts + EMS
-        notifyContacts(event, incident);
+        // 6. Start 10-second countdown — user can cancel by saying "I'm okay" or pressing the button
+        userConfirmedOkayRef.current = false;
+        setUserConfirmedOkay(false);
+        setCountdownSeconds(10);
+        let remaining = 10;
+        countdownCallbackRef.current = () => {
+          notifyContacts(event, incident);
+        };
+        countdownTimerRef.current = setInterval(() => {
+          remaining--;
+          setCountdownSeconds(remaining);
+          if (remaining <= 0) {
+            clearInterval(countdownTimerRef.current!);
+            countdownTimerRef.current = null;
+            setCountdownSeconds(null);
+            // Only call if user hasn't confirmed okay
+            if (!userConfirmedOkayRef.current && countdownCallbackRef.current) {
+              countdownCallbackRef.current();
+              countdownCallbackRef.current = null;
+            }
+          }
+        }, 1000);
 
         // 7. After 60s, finalize audio and update incident
         setTimeout(() => {
@@ -603,6 +676,10 @@ export default function LiveFeedPage() {
     setEmergencyDetected(false);
     setEmergencyEvent(null);
     setShowEmergencyOverlay(false);
+    setUserConfirmedOkay(false);
+    userConfirmedOkayRef.current = false;
+    setCountdownSeconds(null);
+    cancelCountdown();
     startTimeRef.current = new Date();
     isRecordingRef.current = true;
     setIsRecording(true);
@@ -640,11 +717,29 @@ export default function LiveFeedPage() {
     }
   };
 
+  const cancelCountdown = useCallback(() => {
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+    countdownCallbackRef.current = null;
+    setCountdownSeconds(null);
+  }, []);
+
+  const confirmImOkay = useCallback(() => {
+    userConfirmedOkayRef.current = true;
+    setUserConfirmedOkay(true);
+    cancelCountdown();
+  }, [cancelCountdown]);
+
   const dismissEmergency = () => {
+    confirmImOkay();
     setShowEmergencyOverlay(false);
     setEmergencyDetected(false);
     setEmergencyEvent(null);
     emergencyDetectedRef.current = false;
+    setUserConfirmedOkay(false);
+    userConfirmedOkayRef.current = false;
 
     // Stop audio recording if active
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
@@ -719,6 +814,34 @@ export default function LiveFeedPage() {
                 </div>
               )}
 
+              {/* "I Am Okay" Button + Countdown */}
+              {countdownSeconds !== null && !userConfirmedOkay && (
+                <div className="mb-4">
+                  <button
+                    onClick={confirmImOkay}
+                    className="w-full px-6 py-4 bg-green-600 hover:bg-green-700 text-white rounded-xl text-lg font-black tracking-wide transition-colors shadow-lg shadow-green-900/40 border-2 border-green-400/30"
+                  >
+                    <div className="flex items-center justify-center gap-3">
+                      <CheckCircle className="w-6 h-6" />
+                      <span>I Am Okay</span>
+                    </div>
+                  </button>
+                  <div className="mt-2 text-center">
+                    <span className="text-yellow-400 text-sm font-bold">
+                      Calling emergency contacts in {countdownSeconds}s...
+                    </span>
+                    <p className="text-zinc-500 text-xs mt-1">Press the button or say &quot;I&apos;m okay&quot; to cancel</p>
+                  </div>
+                </div>
+              )}
+
+              {userConfirmedOkay && (
+                <div className="mb-4 flex items-center gap-2 bg-green-950/30 border border-green-700/50 rounded-xl px-4 py-3">
+                  <CheckCircle className="w-5 h-5 text-green-400" />
+                  <span className="text-green-400 text-sm font-semibold">User confirmed okay — emergency calls cancelled</span>
+                </div>
+              )}
+
               {/* Notification Status */}
               <div className="space-y-2 mb-6">
                 {isNotifying ? (
@@ -730,8 +853,8 @@ export default function LiveFeedPage() {
                   <div className="space-y-1.5">
                     {notificationLogs.slice(0, 5).map((log) => (
                       <div key={log.id} className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg ${log.success ? "text-green-400 bg-green-950/20" : "text-red-400 bg-red-950/20"}`}>
-                        {log.method === "ems" ? <Radio className="w-3 h-3" /> : log.method === "call" ? <Phone className="w-3 h-3" /> : <MessageSquare className="w-3 h-3" />}
-                        <span>{log.success ? "✓" : "✗"} {log.method === "ems" ? "EMS Call" : log.method === "call" ? "Call" : "SMS"} → {log.contactName}</span>
+                        {log.method === "ems" ? <Radio className="w-3 h-3" /> : <Phone className="w-3 h-3" />}
+                        <span>{log.success ? "✓" : "✗"} {log.method === "ems" ? "EMS Call" : "Call"} → {log.contactName}</span>
                       </div>
                     ))}
                   </div>
@@ -975,13 +1098,11 @@ export default function LiveFeedPage() {
                     >
                       {log.method === "ems" ? (
                         <Radio className="w-3 h-3 flex-shrink-0" />
-                      ) : log.method === "call" ? (
-                        <Phone className="w-3 h-3 flex-shrink-0" />
                       ) : (
-                        <MessageSquare className="w-3 h-3 flex-shrink-0" />
+                        <Phone className="w-3 h-3 flex-shrink-0" />
                       )}
                       <span className="truncate">
-                        {log.success ? "✓" : "✗"} {log.method === "ems" ? "EMS" : log.method === "call" ? "Call" : "SMS"} → {log.contactName}
+                        {log.success ? "✓" : "✗"} {log.method === "ems" ? "EMS" : "Call"} → {log.contactName}
                       </span>
                     </div>
                   ))
