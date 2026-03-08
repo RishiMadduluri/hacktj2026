@@ -79,16 +79,6 @@ export async function detectEvents(base64Image: string): Promise<{ events: Video
 - Headache or unease
 - Signs of unconsciousness
 
-4. Violence or Threats:
-- Physical altercations
-- Threatening behavior
-- Weapons visible
-
-5. Suspicious Activities:
-- Shoplifting
-- Vandalism
-- Trespassing
-
 Return a JSON object in this exact format:
 
 {
