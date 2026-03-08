@@ -17,6 +17,7 @@ export interface EmergencyContact {
   email: string;
   relationship: string;
   priority: number;
+  notifyCall?: boolean;
 }
 
 export type EmergencyType = "STROKE" | "FALL" | "CARDIAC" | "SEIZURE" | "DISTRESS" | "NORMAL";
