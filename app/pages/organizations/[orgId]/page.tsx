@@ -97,7 +97,7 @@ export default function OrgCameraGrid() {
           if ("Notification" in window && Notification.permission === "granted") {
             new Notification(`Emergency: ${userName}`, {
               body: `${incident.type} - ${incident.description}`,
-              icon: "/HawkWatchLogo.png",
+              icon: "/favicon.ico",
               tag: `org-emergency-${userId}`,
               requireInteraction: true,
             });

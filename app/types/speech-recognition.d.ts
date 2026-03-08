@@ -1,47 +1,49 @@
+/** Error event fired by the SpeechRecognition API */
 interface SpeechRecognitionErrorEvent extends Event {
-  error: string;
-  message?: string;
+  readonly error: string
+  readonly message?: string
 }
 
+/** Result event fired when the recognizer produces results */
 interface SpeechRecognitionEvent extends Event {
-  resultIndex: number;
-  results: SpeechRecognitionResultList;
+  readonly resultIndex: number
+  readonly results: SpeechRecognitionResultList
 }
 
 interface SpeechRecognitionResultList {
-  length: number;
-  item(index: number): SpeechRecognitionResult;
-  [index: number]: SpeechRecognitionResult;
+  readonly length: number
+  item(idx: number): SpeechRecognitionResult
+  [idx: number]: SpeechRecognitionResult
 }
 
 interface SpeechRecognitionResult {
-  length: number;
-  item(index: number): SpeechRecognitionAlternative;
-  [index: number]: SpeechRecognitionAlternative;
-  isFinal: boolean;
+  readonly length: number
+  readonly isFinal: boolean
+  item(idx: number): SpeechRecognitionAlternative
+  [idx: number]: SpeechRecognitionAlternative
 }
 
 interface SpeechRecognitionAlternative {
-  transcript: string;
-  confidence: number;
+  readonly transcript: string
+  readonly confidence: number
 }
 
 interface SpeechRecognition extends EventTarget {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start(): void;
-  stop(): void;
-  abort(): void;
-  onerror: ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => any) | null;
-  onresult: ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => any) | null;
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  start(): void
+  stop(): void
+  abort(): void
+  onerror: ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => void) | null
+  onresult: ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => void) | null
 }
 
 interface SpeechRecognitionConstructor {
-  new (): SpeechRecognition;
+  new (): SpeechRecognition
 }
 
 interface Window {
-  SpeechRecognition: SpeechRecognitionConstructor;
-  webkitSpeechRecognition: SpeechRecognitionConstructor;
+  SpeechRecognition: SpeechRecognitionConstructor
+  webkitSpeechRecognition: SpeechRecognitionConstructor
 }

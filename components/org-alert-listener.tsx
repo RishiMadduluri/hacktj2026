@@ -49,7 +49,7 @@ export default function OrgAlertListener() {
             if ("Notification" in window && Notification.permission === "granted") {
               new Notification(`Emergency: ${userName} (${org.name})`, {
                 body: `${incident.type} - ${incident.description}`,
-                icon: "/HawkWatchLogo.png",
+                icon: "/favicon.ico",
                 tag: `org-alert-${payload.payload.userId}`,
                 requireInteraction: true,
               });

@@ -497,7 +497,7 @@ export default function LiveFeedPage() {
     if (Notification.permission !== "granted") return;
     new Notification(`⚠️ FirstWatch — ${event.emergencyType} Alert`, {
       body: event.description,
-      icon: "/HawkWatchLogo.png",
+      icon: "/favicon.ico",
       tag: "firstwatch-alert",
       requireInteraction: true,
     });
