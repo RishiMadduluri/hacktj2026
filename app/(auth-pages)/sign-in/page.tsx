@@ -27,37 +27,29 @@ export default async function Login(props: { searchParams: Promise<Message> }) {
             </p>
           </div>
 
-          {/* Demo credentials hint */}
-          <div className="p-3 bg-red-950/20 border border-red-900/50 rounded-lg">
-            <p className="text-xs text-red-400 font-medium mb-1">Demo Credentials</p>
-            <p className="text-xs text-zinc-400">
-              Email: <span className="text-white font-mono">demo@firstwatch.com</span>
-            </p>
-            <p className="text-xs text-zinc-400">
-              Password: <span className="text-white font-mono">demo123</span>
-            </p>
-          </div>
-
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email" className="text-zinc-300">Email</Label>
               <Input
                 name="email"
                 id="email"
-                placeholder="demo@firstwatch.com"
-                defaultValue="demo@firstwatch.com"
+                placeholder="you@example.com"
                 required
                 className="bg-[#1A1A1A] border-[#2A2A2A] text-white placeholder-zinc-600 focus:border-red-600 focus:ring-red-600"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-zinc-300">Password</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password" className="text-zinc-300">Password</Label>
+                <Link className="text-xs text-red-500 hover:text-red-400" href="/forgot-password">
+                  Forgot password?
+                </Link>
+              </div>
               <Input
                 type="password"
                 name="password"
                 id="password"
-                placeholder="demo123"
-                defaultValue="demo123"
+                placeholder="Your password"
                 required
                 className="bg-[#1A1A1A] border-[#2A2A2A] text-white placeholder-zinc-600 focus:border-red-600 focus:ring-red-600"
               />
@@ -71,6 +63,12 @@ export default async function Login(props: { searchParams: Promise<Message> }) {
             </SubmitButton>
             <FormMessage message={searchParams} />
           </div>
+          <p className="text-center text-sm text-zinc-500">
+            Don&apos;t have an account?{" "}
+            <Link className="text-red-500 hover:text-red-400 font-medium" href="/sign-up">
+              Sign up
+            </Link>
+          </p>
         </form>
       </div>
     </div>

@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "es2020",
+    "noEmit": false,
+    "incremental": false,
+    "isolatedModules": false,
+    "jsx": "react-jsx"
+  },
+  "include": [],
+  "files": [
+    "lib/auth/reset-url.ts",
+    "lib/incidents/local-cache.ts",
+    "lib/ml/backend.ts",
+    "lib/organizations/member-feeds.ts",
+    "tests/reset-url.test.ts",
+    "tests/local-cache.test.ts",
+    "tests/member-feeds.test.ts",
+    "tests/realtime.test.ts",
+    "tests/tf-backend.test.ts"
+  ]
+}

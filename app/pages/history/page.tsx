@@ -17,6 +17,8 @@ import {
   Play,
 } from "lucide-react";
 import type { Incident } from "@/types/medical";
+import { createClient } from "@/lib/supabase/client";
+import { getIncidents, deleteIncident as deleteIncidentDb, deleteAllIncidents } from "@/lib/supabase/data";
 
 const SEVERITY_COLORS: Record<string, string> = {
   LOW: "text-yellow-400 border-yellow-700/50 bg-yellow-900/20",
@@ -59,14 +61,22 @@ export default function HistoryPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  useEffect(() => {
-    const stored = localStorage.getItem("firstwatch_incidents");
-    if (stored) setIncidents(JSON.parse(stored));
+  const [userId, setUserId] = useState<string | null>(null);
 
-    // Listen for real-time updates
+  useEffect(() => {
+    const loadData = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      setUserId(user.id);
+      const inc = await getIncidents(supabase, user.id);
+      setIncidents(inc);
+    };
+    loadData();
+
     const handleStorage = () => {
-      const updated = localStorage.getItem("firstwatch_incidents");
-      if (updated) setIncidents(JSON.parse(updated));
+      // Re-fetch from Supabase on storage events (triggered by live-feed)
+      loadData();
     };
     window.addEventListener("storage", handleStorage);
     return () => window.removeEventListener("storage", handleStorage);
@@ -78,16 +88,19 @@ export default function HistoryPage() {
     .filter((i) => !searchQuery || i.description.toLowerCase().includes(searchQuery.toLowerCase()) || i.type.toLowerCase().includes(searchQuery.toLowerCase()))
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
+    const supabase = createClient();
+    await deleteIncidentDb(supabase, id);
     const updated = incidents.filter((i) => i.id !== id);
     setIncidents(updated);
-    localStorage.setItem("firstwatch_incidents", JSON.stringify(updated));
   };
 
-  const handleClearAll = () => {
+  const handleClearAll = async () => {
     if (!confirm("Delete all incidents? This cannot be undone.")) return;
+    if (!userId) return;
+    const supabase = createClient();
+    await deleteAllIncidents(supabase, userId);
     setIncidents([]);
-    localStorage.setItem("firstwatch_incidents", "[]");
   };
 
   const handleExportCSV = () => {

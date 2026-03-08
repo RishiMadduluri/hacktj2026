@@ -11,13 +11,16 @@ import {
   LogOut,
   Activity,
   ChevronRight,
-  Shield,
+  Users,
 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import OrgAlertListener from "@/components/org-alert-listener";
 
 const navItems = [
   { href: "/protected", label: "Dashboard", icon: LayoutDashboard, desc: "Overview & stats" },
   { href: "/pages/live-feed", label: "Live Feed", icon: Video, desc: "Real-time monitoring" },
   { href: "/pages/history", label: "History", icon: History, desc: "Past incidents" },
+  { href: "/pages/organizations", label: "Organizations", icon: Users, desc: "Camera groups" },
   { href: "/pages/settings", label: "Settings", icon: Settings, desc: "Profile & contacts" },
 ];
 
@@ -29,8 +32,10 @@ export default function PagesLayout({ children }: { children: React.ReactNode })
   const [incidentCount, setIncidentCount] = useState(0);
 
   useEffect(() => {
-    const match = document.cookie.match(/firstwatch_demo_email=([^;]+)/);
-    setUserEmail(match ? decodeURIComponent(match[1]) : "demo@firstwatch.com");
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUserEmail(user?.email || "");
+    });
 
     const checkState = () => {
       setIsMonitoring(localStorage.getItem("firstwatch_monitoring") === "true");
@@ -48,13 +53,14 @@ export default function PagesLayout({ children }: { children: React.ReactNode })
   }, []);
 
   const handleSignOut = async () => {
-    document.cookie = "firstwatch_demo_auth=; path=/; max-age=0";
-    document.cookie = "firstwatch_demo_email=; path=/; max-age=0";
+    const supabase = createClient();
+    await supabase.auth.signOut();
     router.push("/sign-in");
   };
 
   return (
     <div className="flex min-h-screen bg-[#0A0A0A]">
+      <OrgAlertListener />
       {/* Sidebar */}
       <aside className="w-64 flex-shrink-0 bg-[#080808] border-r border-[#1A1A1A] flex flex-col fixed h-full z-30">
         {/* Logo */}

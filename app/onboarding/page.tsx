@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { X, Plus, ChevronRight, Shield } from "lucide-react";
 import type { MedicalProfile } from "@/types/medical";
+import { createClient } from "@/lib/supabase/client";
+import { upsertProfile } from "@/lib/supabase/data";
 
 const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "Unknown"];
 
@@ -69,6 +71,7 @@ function TagInput({
 export default function OnboardingPage() {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
 
   const [profile, setProfile] = useState<MedicalProfile>({
     name: "",
@@ -81,6 +84,13 @@ export default function OnboardingPage() {
     conditions: [],
     medications: [],
   });
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setUserId(user.id);
+    });
+  }, []);
 
   const set = (key: keyof MedicalProfile, value: string | number | string[]) =>
     setProfile((p) => ({ ...p, [key]: value }));
@@ -96,11 +106,21 @@ export default function OnboardingPage() {
       alert("Please enter your name.");
       return;
     }
+    if (!userId) {
+      alert("Not authenticated. Please sign in again.");
+      return;
+    }
     setSaving(true);
-    localStorage.setItem("firstwatch_profile", JSON.stringify(profile));
-    // Brief pause for UX
-    await new Promise((r) => setTimeout(r, 500));
-    router.push("/protected");
+    try {
+      const supabase = createClient();
+      await upsertProfile(supabase, userId, profile);
+      // Also cache in localStorage for quick access by live-feed
+      localStorage.setItem("firstwatch_profile", JSON.stringify(profile));
+      router.push("/protected");
+    } catch (err) {
+      alert("Failed to save profile: " + (err as Error).message);
+      setSaving(false);
+    }
   };
 
   const inputClass =
@@ -123,8 +143,6 @@ export default function OnboardingPage() {
           <h1 className="text-3xl font-bold text-white">Set Up Your Medical Profile</h1>
           <p className="text-zinc-400 mt-2">
             This information helps FirstWatch respond accurately in an emergency.
-            <br />
-            <span className="text-zinc-600 text-sm">Stored locally on your device only.</span>
           </p>
         </div>
 

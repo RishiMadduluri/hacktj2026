@@ -25,6 +25,8 @@ import {
   MapPin,
 } from "lucide-react";
 import type { MedicalProfile, Incident, EmergencyContact } from "@/types/medical";
+import { createClient } from "@/lib/supabase/client";
+import { getProfile, getContacts, getIncidents } from "@/lib/supabase/data";
 
 const SEVERITY_COLORS: Record<string, string> = {
   LOW: "text-yellow-400 bg-yellow-900/20 border-yellow-800/50",
@@ -150,30 +152,39 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    const p = localStorage.getItem("firstwatch_profile");
-    if (!p) {
-      router.push("/onboarding");
-      return;
-    }
-    setProfile(JSON.parse(p));
+    const loadData = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-    const inc: Incident[] = JSON.parse(localStorage.getItem("firstwatch_incidents") || "[]");
-    setIncidents(inc);
+      const p = await getProfile(supabase, user.id);
+      if (!p) {
+        router.push("/onboarding");
+        return;
+      }
+      setProfile(p);
+      localStorage.setItem("firstwatch_profile", JSON.stringify(p));
 
-    const ct: EmergencyContact[] = JSON.parse(localStorage.getItem("firstwatch_contacts") || "[]");
-    setContacts(ct);
+      const inc = await getIncidents(supabase, user.id);
+      setIncidents(inc);
 
-    const monitoring = localStorage.getItem("firstwatch_monitoring") === "true";
-    setIsMonitoring(monitoring);
+      const ct = await getContacts(supabase, user.id);
+      setContacts(ct);
+      localStorage.setItem("firstwatch_contacts", JSON.stringify(ct));
 
-    const startDate = localStorage.getItem("firstwatch_start_date");
-    if (startDate) {
-      const days = Math.floor((Date.now() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24));
-      setDaysMonitored(Math.max(1, days));
-    } else {
-      localStorage.setItem("firstwatch_start_date", new Date().toISOString());
-      setDaysMonitored(1);
-    }
+      const monitoring = localStorage.getItem("firstwatch_monitoring") === "true";
+      setIsMonitoring(monitoring);
+
+      const startDate = localStorage.getItem("firstwatch_start_date");
+      if (startDate) {
+        const days = Math.floor((Date.now() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24));
+        setDaysMonitored(Math.max(1, days));
+      } else {
+        localStorage.setItem("firstwatch_start_date", new Date().toISOString());
+        setDaysMonitored(1);
+      }
+    };
+    loadData();
   }, [router]);
 
   useEffect(() => {

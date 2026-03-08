@@ -21,6 +21,8 @@ import {
   Pill,
 } from "lucide-react";
 import type { MedicalProfile, EmergencyContact } from "@/types/medical";
+import { createClient } from "@/lib/supabase/client";
+import { getProfile, upsertProfile, getContacts, addContact as addContactDb, deleteContact as deleteContactDb } from "@/lib/supabase/data";
 
 const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "Unknown"];
 const TABS = [
@@ -100,16 +102,27 @@ export default function SettingsPage() {
 
   const [verbalCheckIn, setVerbalCheckIn] = useState(true);
   const [callEMS, setCallEMS] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    const p = localStorage.getItem("firstwatch_profile");
-    if (p) setProfile(JSON.parse(p));
-    const c = localStorage.getItem("firstwatch_contacts");
-    if (c) setContacts(JSON.parse(c));
-    const vc = localStorage.getItem("firstwatch_verbal_checkin");
-    if (vc !== null) setVerbalCheckIn(vc === "true");
-    const ems = localStorage.getItem("firstwatch_call_ems");
-    if (ems !== null) setCallEMS(ems === "true");
+    const loadData = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      setUserId(user.id);
+
+      const p = await getProfile(supabase, user.id);
+      if (p) setProfile(p);
+
+      const c = await getContacts(supabase, user.id);
+      setContacts(c);
+
+      const vc = localStorage.getItem("firstwatch_verbal_checkin");
+      if (vc !== null) setVerbalCheckIn(vc === "true");
+      const ems = localStorage.getItem("firstwatch_call_ems");
+      if (ems !== null) setCallEMS(ems === "true");
+    };
+    loadData();
   }, []);
 
   const setField = (key: keyof MedicalProfile, value: string | number | string[]) =>
@@ -121,23 +134,25 @@ export default function SettingsPage() {
   const removeTag = (key: "allergies" | "conditions" | "medications", i: number) =>
     setField(key, profile[key].filter((_, idx) => idx !== i));
 
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
+    if (!userId) return;
+    const supabase = createClient();
+    await upsertProfile(supabase, userId, profile);
     localStorage.setItem("firstwatch_profile", JSON.stringify(profile));
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const handleAddContact = () => {
+  const handleAddContact = async () => {
     if (!newContact.name.trim() || !newContact.phone.trim()) {
       alert("Name and phone are required.");
       return;
     }
-    const contact: EmergencyContact = {
-      ...newContact,
-      id: Date.now().toString(),
-      priority: contacts.length + 1,
-      notifyCall: true,
-    };
+    if (!userId) return;
+    const supabase = createClient();
+    const contactData = { ...newContact, priority: contacts.length + 1, notifyCall: true };
+    const newId = await addContactDb(supabase, userId, contactData);
+    const contact: EmergencyContact = { ...contactData, id: newId };
     const updated = [...contacts, contact];
     setContacts(updated);
     localStorage.setItem("firstwatch_contacts", JSON.stringify(updated));
@@ -153,7 +168,9 @@ export default function SettingsPage() {
     localStorage.setItem("firstwatch_contacts", JSON.stringify(updated));
   };
 
-  const handleDeleteContact = (id: string) => {
+  const handleDeleteContact = async (id: string) => {
+    const supabase = createClient();
+    await deleteContactDb(supabase, id);
     const updated = contacts.filter((c) => c.id !== id).map((c, i) => ({ ...c, priority: i + 1 }));
     setContacts(updated);
     localStorage.setItem("firstwatch_contacts", JSON.stringify(updated));

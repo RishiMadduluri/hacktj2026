@@ -24,16 +24,13 @@ export default async function ForgotPassword(props: {
           <div className="text-center">
             <h1 className="text-2xl font-bold text-white">Reset Password</h1>
             <p className="text-sm text-zinc-500 mt-1">
+              Enter your account email and we&apos;ll send you a reset link.
+            </p>
+            <p className="text-sm text-zinc-500 mt-2">
               Already have an account?{" "}
               <Link className="text-red-500 hover:text-red-400 font-medium" href="/sign-in">
                 Sign in
               </Link>
-            </p>
-          </div>
-          <div className="p-3 bg-red-950/20 border border-red-900/50 rounded-lg">
-            <p className="text-xs text-red-400 font-medium">Demo Mode</p>
-            <p className="text-xs text-zinc-400 mt-1">
-              No password reset needed. Use <span className="text-white font-mono">demo@firstwatch.com</span> / <span className="text-white font-mono">demo123</span>
             </p>
           </div>
           <div className="space-y-4">

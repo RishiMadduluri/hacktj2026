@@ -21,6 +21,14 @@ import {
 } from "lucide-react";
 import { detectMedicalEvents, type MedicalVideoEvent } from "./actions";
 import type { Incident, MedicalProfile } from "@/types/medical";
+import { createClient } from "@/lib/supabase/client";
+import { CAMERA_SHARING_STORAGE_KEY } from "@/lib/supabase/events";
+import { getProfile, getContacts, createIncident, updateIncident as updateIncidentDb } from "@/lib/supabase/data";
+import { getUserOrgs } from "@/lib/supabase/data";
+import { getOrgChannel, broadcastFrame, broadcastEmergency } from "@/lib/supabase/realtime";
+import { applyIncidentAudioUpdate, replaceIncidentId } from "@/lib/incidents/local-cache";
+import { initializeTfBackend } from "@/lib/ml/backend";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import type * as blazeface from "@tensorflow-models/blazeface";
 import type * as posedetection from "@tensorflow-models/pose-detection";
@@ -62,6 +70,11 @@ interface NotificationLog {
   timestamp: Date;
 }
 
+interface OrgBroadcastChannel {
+  orgId: string;
+  channel: RealtimeChannel;
+}
+
 export default function LiveFeedPage() {
   const [isRecording, setIsRecording] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
@@ -83,6 +96,13 @@ export default function LiveFeedPage() {
   const [audioRecordingTime, setAudioRecordingTime] = useState(0);
   const [elapsedTime, setElapsedTime] = useState("00:00");
   const [frameCount, setFrameCount] = useState(0);
+
+  const [userId, setUserId] = useState<string | null>(null);
+  const orgChannelsRef = useRef<OrgBroadcastChannel[]>([]);
+  const enabledOrgIdsRef = useRef<Set<string>>(new Set());
+  const orgMembershipChannelRef = useRef<RealtimeChannel | null>(null);
+  const broadcastIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
   const [location, setLocation] = useState<{ lat: number; lng: number; address?: string } | null>(null);
   const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
   const [userConfirmedOkay, setUserConfirmedOkay] = useState(false);
@@ -104,6 +124,9 @@ export default function LiveFeedPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const audioFinalizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const audioRecordingTimeRef = useRef(0);
+  const activeIncidentIdRef = useRef<string | null>(null);
   const elapsedTimerRef = useRef<NodeJS.Timeout | null>(null);
   const geoWatchIdRef = useRef<number | null>(null);
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -112,8 +135,23 @@ export default function LiveFeedPage() {
 
   useEffect(() => {
     setIsClient(true);
-    const p = localStorage.getItem("firstwatch_profile");
-    if (p) setProfile(JSON.parse(p));
+
+    const loadData = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      setUserId(user.id);
+
+      const p = await getProfile(supabase, user.id);
+      if (p) {
+        setProfile(p);
+        localStorage.setItem("firstwatch_profile", JSON.stringify(p));
+      }
+
+      const c = await getContacts(supabase, user.id);
+      localStorage.setItem("firstwatch_contacts", JSON.stringify(c));
+    };
+    loadData();
 
     if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
@@ -188,8 +226,7 @@ export default function LiveFeedPage() {
       setInitProgress("Loading TensorFlow.js...");
       const tfPromise = import("@tensorflow/tfjs").then(async (tf) => {
         tfjs = tf;
-        await tf.ready();
-        await tf.setBackend("webgl");
+        await initializeTfBackend(tf);
       });
 
       setInitProgress("Loading detection models...");
@@ -231,9 +268,9 @@ export default function LiveFeedPage() {
         video: { width: { ideal: 640, max: 640 }, height: { ideal: 360, max: 360 }, frameRate: { ideal: 30 }, facingMode: "user" },
         audio: true,
       });
+      mediaStreamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        mediaStreamRef.current = stream;
         await new Promise<void>((resolve) => {
           videoRef.current!.onloadedmetadata = () => {
             if (canvasRef.current) {
@@ -332,6 +369,129 @@ export default function LiveFeedPage() {
     }
   }, []);
 
+  const clearBroadcastChannels = useCallback(() => {
+    const supabase = createClient();
+    for (const entry of orgChannelsRef.current) {
+      supabase.removeChannel(entry.channel);
+    }
+    orgChannelsRef.current = [];
+    enabledOrgIdsRef.current = new Set();
+  }, []);
+
+  const syncBroadcastChannels = useCallback(async () => {
+    clearBroadcastChannels();
+
+    if (!userId || !isRecordingRef.current) {
+      return;
+    }
+
+    const supabase = createClient();
+    const orgs = await getUserOrgs(supabase, userId);
+    if (!isRecordingRef.current) {
+      return;
+    }
+
+    enabledOrgIdsRef.current = new Set(
+      orgs.filter((org) => org.cameraEnabled).map((org) => org.orgId),
+    );
+
+    const channels: OrgBroadcastChannel[] = [];
+    for (const org of orgs) {
+      const channel = getOrgChannel(supabase, org.orgId);
+      channel.on("broadcast", { event: "camera-sharing-changed" }, (payload) => {
+        if (payload.payload.userId !== userId) {
+          return;
+        }
+
+        if (payload.payload.enabled) {
+          enabledOrgIdsRef.current.add(org.orgId);
+        } else {
+          enabledOrgIdsRef.current.delete(org.orgId);
+        }
+      });
+      channel.subscribe();
+      channels.push({ orgId: org.orgId, channel });
+    }
+    orgChannelsRef.current = channels;
+  }, [clearBroadcastChannels, userId]);
+
+  useEffect(() => {
+    if (!userId) {
+      return;
+    }
+
+    const supabase = createClient();
+    orgMembershipChannelRef.current = supabase
+      .channel(`org-memberships-${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "org_members", filter: `user_id=eq.${userId}` },
+        () => {
+          if (isRecordingRef.current) {
+            void syncBroadcastChannels();
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      if (orgMembershipChannelRef.current) {
+        supabase.removeChannel(orgMembershipChannelRef.current);
+      }
+      orgMembershipChannelRef.current = null;
+    };
+  }, [syncBroadcastChannels, userId]);
+
+  useEffect(() => {
+    if (!userId) {
+      return;
+    }
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== CAMERA_SHARING_STORAGE_KEY || !event.newValue) {
+        return;
+      }
+
+      try {
+        const payload = JSON.parse(event.newValue) as {
+          orgId?: string;
+          userId?: string;
+          enabled?: boolean;
+        };
+
+        if (!payload.orgId || payload.userId !== userId || payload.enabled === undefined) {
+          return;
+        }
+
+        if (payload.enabled) {
+          enabledOrgIdsRef.current.add(payload.orgId);
+        } else {
+          enabledOrgIdsRef.current.delete(payload.orgId);
+        }
+      } catch {
+        // Ignore malformed cross-tab events.
+      }
+    };
+
+    window.addEventListener("storage", handleStorage);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, [userId]);
+
+  const updateCachedIncidents = useCallback(
+    (updater: (incidents: Incident[]) => Incident[]) => {
+      const existing: Incident[] = JSON.parse(
+        localStorage.getItem("firstwatch_incidents") || "[]",
+      );
+      const updated = updater(existing);
+      localStorage.setItem("firstwatch_incidents", JSON.stringify(updated));
+      window.dispatchEvent(new Event("storage"));
+      return updated;
+    },
+    [],
+  );
+
   const sendDesktopNotification = useCallback((event: MedicalVideoEvent) => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
     if (Notification.permission !== "granted") return;
@@ -343,6 +503,17 @@ export default function LiveFeedPage() {
     });
   }, []);
 
+  const clearAudioTimers = useCallback(() => {
+    if (audioTimerRef.current) {
+      clearInterval(audioTimerRef.current);
+      audioTimerRef.current = null;
+    }
+    if (audioFinalizeTimeoutRef.current) {
+      clearTimeout(audioFinalizeTimeoutRef.current);
+      audioFinalizeTimeoutRef.current = null;
+    }
+  }, []);
+
   // Start recording audio when emergency is detected
   const startAudioRecording = useCallback(() => {
     if (!mediaStreamRef.current) return;
@@ -352,6 +523,8 @@ export default function LiveFeedPage() {
     const audioStream = new MediaStream(audioTracks);
     const mediaRecorder = new MediaRecorder(audioStream, { mimeType: "audio/webm" });
     audioChunksRef.current = [];
+    clearAudioTimers();
+    audioRecordingTimeRef.current = 0;
 
     mediaRecorder.ondataavailable = (e) => {
       if (e.data.size > 0) audioChunksRef.current.push(e.data);
@@ -363,64 +536,52 @@ export default function LiveFeedPage() {
     setAudioRecordingTime(0);
 
     // Timer to track recording duration
-    let seconds = 0;
     audioTimerRef.current = setInterval(() => {
-      seconds++;
-      setAudioRecordingTime(seconds);
+      audioRecordingTimeRef.current += 1;
+      setAudioRecordingTime(audioRecordingTimeRef.current);
     }, 1000);
-
-    // Auto-stop after 60 seconds
-    setTimeout(() => {
-      stopAudioRecording();
-    }, 60000);
-  }, []);
-
-  const stopAudioRecording = useCallback((): string | null => {
-    if (audioTimerRef.current) {
-      clearInterval(audioTimerRef.current);
-      audioTimerRef.current = null;
-    }
-
-    if (!mediaRecorderRef.current || mediaRecorderRef.current.state === "inactive") {
-      setIsRecordingAudio(false);
-      return null;
-    }
-
-    return new Promise<string | null>((resolve) => {
-      const recorder = mediaRecorderRef.current!;
-      recorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        const url = URL.createObjectURL(blob);
-        setIsRecordingAudio(false);
-        resolve(url);
-      };
-      recorder.stop();
-    }) as unknown as string | null;
-  }, []);
+  }, [clearAudioTimers]);
 
   // Save audio to incident after recording
-  const finalizeAudioRecording = useCallback(async (incidentId: string) => {
-    if (!mediaRecorderRef.current || mediaRecorderRef.current.state === "inactive") return;
-
-    if (audioTimerRef.current) {
-      clearInterval(audioTimerRef.current);
-      audioTimerRef.current = null;
-    }
+  const finalizeAudioRecording = useCallback(async (incidentId = activeIncidentIdRef.current) => {
+    clearAudioTimers();
 
     const recorder = mediaRecorderRef.current;
+    const duration = audioRecordingTimeRef.current;
+
+    mediaRecorderRef.current = null;
+    activeIncidentIdRef.current = null;
+    audioRecordingTimeRef.current = 0;
+    setAudioRecordingTime(0);
+
+    if (!recorder || recorder.state === "inactive") {
+      setIsRecordingAudio(false);
+      return;
+    }
+
     return new Promise<void>((resolve) => {
       recorder.onstop = () => {
         const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
         const audioUrl = URL.createObjectURL(blob);
+        if (incidentId) {
+          updateCachedIncidents((existing) =>
+            applyIncidentAudioUpdate(
+              existing,
+              incidentId,
+              audioUrl,
+              duration,
+            ),
+          );
+        }
 
-        // Update the incident with audio URL
-        const existing: Incident[] = JSON.parse(localStorage.getItem("firstwatch_incidents") || "[]");
-        const idx = existing.findIndex((i) => i.id === incidentId);
-        if (idx !== -1) {
-          existing[idx].audioUrl = audioUrl;
-          existing[idx].duration = audioRecordingTime;
-          localStorage.setItem("firstwatch_incidents", JSON.stringify(existing));
-          window.dispatchEvent(new Event("storage"));
+        if (incidentId && userId) {
+          const supabase = createClient();
+          updateIncidentDb(supabase, incidentId, {
+            audioUrl,
+            duration,
+          }).catch((error) => {
+            console.error("Failed to persist incident audio:", error);
+          });
         }
 
         setIsRecordingAudio(false);
@@ -428,10 +589,10 @@ export default function LiveFeedPage() {
       };
       recorder.stop();
     });
-  }, [audioRecordingTime]);
+  }, [clearAudioTimers, updateCachedIncidents, userId]);
 
   // Notify contacts + EMS
-  const notifyContacts = useCallback(async (event: MedicalVideoEvent, incident: Incident) => {
+  const notifyContacts = useCallback(async (incident: Incident) => {
     const contacts = JSON.parse(localStorage.getItem("firstwatch_contacts") || "[]");
     const storedProfile = JSON.parse(localStorage.getItem("firstwatch_profile") || "null");
     if (!storedProfile) return;
@@ -619,7 +780,7 @@ export default function LiveFeedPage() {
         // 4. Start recording audio
         startAudioRecording();
 
-        // 5. Save to localStorage
+        // 5. Save to local cache first for immediate UI sync
         const incident: Incident = {
           id: Date.now().toString(),
           type: event.emergencyType as Incident["type"],
@@ -627,10 +788,23 @@ export default function LiveFeedPage() {
           description: event.description,
           timestamp: new Date().toISOString(),
         };
-        const existing: Incident[] = JSON.parse(localStorage.getItem("firstwatch_incidents") || "[]");
-        existing.push(incident);
-        localStorage.setItem("firstwatch_incidents", JSON.stringify(existing));
-        window.dispatchEvent(new Event("storage"));
+
+        const localIncidentId = incident.id;
+        updateCachedIncidents((existing) => [...existing, incident]);
+
+        // 5b. Broadcast emergency to org channels
+        for (const { orgId, channel } of orgChannelsRef.current) {
+          if (!enabledOrgIdsRef.current.has(orgId)) {
+            continue;
+          }
+
+          broadcastEmergency(channel, userId || "", profile?.name || "", {
+            type: incident.type,
+            severity: incident.severity,
+            description: incident.description,
+            timestamp: incident.timestamp,
+          });
+        }
 
         // 6. Start 10-second countdown — user can cancel by saying "I'm okay" or pressing the button
         userConfirmedOkayRef.current = false;
@@ -638,7 +812,7 @@ export default function LiveFeedPage() {
         setCountdownSeconds(10);
         let remaining = 10;
         countdownCallbackRef.current = () => {
-          notifyContacts(event, incident);
+          notifyContacts(incident);
         };
         countdownTimerRef.current = setInterval(() => {
           remaining--;
@@ -656,17 +830,34 @@ export default function LiveFeedPage() {
         }, 1000);
 
         // 7. After 60s, finalize audio and update incident
-        setTimeout(() => {
-          finalizeAudioRecording(incident.id);
+        activeIncidentIdRef.current = localIncidentId;
+        audioFinalizeTimeoutRef.current = setTimeout(() => {
+          void finalizeAudioRecording();
         }, 60000);
+
+        // 8. Persist the incident and reconcile the local temporary ID
+        if (userId) {
+          const supabase = createClient();
+          createIncident(supabase, userId, incident)
+            .then((dbId) => {
+              incident.id = dbId;
+              if (activeIncidentIdRef.current === localIncidentId) {
+                activeIncidentIdRef.current = dbId;
+              }
+              updateCachedIncidents((existing) =>
+                replaceIncidentId(existing, localIncidentId, dbId),
+              );
+            })
+            .catch(console.error);
+        }
       });
     } catch (err) {
       console.error("Analysis error:", err);
     }
-  }, [transcript, profile, speakCheckIn, playAlertSound, sendDesktopNotification, notifyContacts, startAudioRecording, finalizeAudioRecording]);
+  }, [transcript, profile, speakCheckIn, playAlertSound, sendDesktopNotification, notifyContacts, startAudioRecording, finalizeAudioRecording, updateCachedIncidents, userId]);
 
   // Recording control
-  const startRecording = () => {
+  const startRecording = async () => {
     if (!mlReady || !mediaStreamRef.current) return;
     setError(null);
     setEvents([]);
@@ -687,6 +878,29 @@ export default function LiveFeedPage() {
     if (recognitionRef.current) {
       try { recognitionRef.current.start(); setIsTranscribing(true); } catch { /* ignore */ }
     }
+
+    await syncBroadcastChannels();
+
+    // Start broadcasting tiny frames every 750ms
+    broadcastIntervalRef.current = setInterval(() => {
+      if (!videoRef.current || orgChannelsRef.current.length === 0 || !userId) return;
+      const tmp = document.createElement("canvas");
+      tmp.width = 160;
+      tmp.height = 90;
+      const ctx = tmp.getContext("2d");
+      if (!ctx) return;
+      try {
+        ctx.drawImage(videoRef.current, 0, 0, 160, 90);
+        const frameData = tmp.toDataURL("image/jpeg", 0.3);
+        for (const { orgId, channel } of orgChannelsRef.current) {
+          if (!enabledOrgIdsRef.current.has(orgId)) {
+            continue;
+          }
+
+          broadcastFrame(channel, userId, profile?.name || "", frameData);
+        }
+      } catch { /* ignore */ }
+    }, 750);
 
     lastDetectionTime.current = 0;
     detectionFrameRef.current = requestAnimationFrame(runDetection);
@@ -715,6 +929,13 @@ export default function LiveFeedPage() {
       clearInterval(elapsedTimerRef.current);
       elapsedTimerRef.current = null;
     }
+    // Clean up broadcast
+    if (broadcastIntervalRef.current) {
+      clearInterval(broadcastIntervalRef.current);
+      broadcastIntervalRef.current = null;
+    }
+    void finalizeAudioRecording();
+    clearBroadcastChannels();
   };
 
   const cancelCountdown = useCallback(() => {
@@ -740,16 +961,7 @@ export default function LiveFeedPage() {
     emergencyDetectedRef.current = false;
     setUserConfirmedOkay(false);
     userConfirmedOkayRef.current = false;
-
-    // Stop audio recording if active
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-      mediaRecorderRef.current.stop();
-      setIsRecordingAudio(false);
-      if (audioTimerRef.current) {
-        clearInterval(audioTimerRef.current);
-        audioTimerRef.current = null;
-      }
-    }
+    void finalizeAudioRecording();
   };
 
   const resumeMonitoring = () => {
@@ -763,6 +975,10 @@ export default function LiveFeedPage() {
 
   // Lifecycle
   useEffect(() => {
+    if (!isClient) {
+      return;
+    }
+
     initSpeech();
     const init = async () => {
       await startWebcam();
@@ -773,7 +989,7 @@ export default function LiveFeedPage() {
       stopRecording();
       stopWebcam();
     };
-  }, [initMLModels, startWebcam, stopWebcam, initSpeech]);
+  }, [initMLModels, isClient, startWebcam, stopWebcam, initSpeech]);
 
   const dangerousEvents = events.filter((e) => e.isDangerous);
 
