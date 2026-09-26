@@ -1,4 +1,4 @@
--- Run this in your Supabase SQL Editor: https://cgcomrxkcxnuzjpuwmpg.supabase.co
+-- Run this in your Supabase project's SQL Editor.
 
 -- Helper function to generate 6-char invite codes
 CREATE OR REPLACE FUNCTION generate_invite_code() RETURNS text AS $$

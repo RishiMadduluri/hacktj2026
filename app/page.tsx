@@ -360,8 +360,8 @@ export default function LandingPage() {
               </div>
 
               {[
-                { icon: Activity, label: "AI Watches", desc: "Computer vision analyzes your live feed every 3 seconds — detecting posture, facial expressions, and movement patterns.", num: "01" },
-                { icon: AlertTriangle, label: "Detects Emergency", desc: "Trained on stroke signs, falls, cardiac events, and seizures. The moment something is wrong, FirstWatch knows.", num: "02" },
+                { icon: Activity, label: "AI Watches", desc: "Every 6 seconds a frame from your camera, plus anything you have said, is checked by a vision-language model for signs of an emergency.", num: "01" },
+                { icon: AlertTriangle, label: "Detects Emergency", desc: "Prompted to look for signs of stroke, falls, cardiac events, and seizures, and to flag anything that looks wrong.", num: "02" },
                 { icon: Volume2, label: "Speaks & Alerts", desc: "A verbal check-in plays aloud. If there's no response within 10 seconds, emergency contacts are immediately notified.", num: "03" },
                 { icon: Ambulance, label: "EMS Responds", desc: "Emergency services receive a complete medical profile — blood type, medications, allergies — before they even arrive.", num: "04" },
               ].map(({ icon: Icon, label, desc, num }, i) => (
@@ -474,7 +474,7 @@ export default function LandingPage() {
               {[
                 { time: "7:15 AM", event: "Speech pattern changes detected", detail: "FirstWatch flags subtle facial asymmetry and slurred movement", type: "warning" },
                 { time: "7:15:30", event: "FirstWatch speaks aloud", detail: '"Robert, are you okay? Say something if you can hear me."', type: "action" },
-                { time: "7:16 AM", event: "Daughter called", detail: "No answer — FirstWatch automatically moves to next contact", type: "warning" },
+                { time: "7:16 AM", event: "Daughter called", detail: "FirstWatch calls each emergency contact in turn", type: "warning" },
                 { time: "7:17 AM", event: "Neighbor called", detail: "Picks up immediately — runs over", type: "action" },
                 { time: "7:18 AM", event: "EMS dispatched", detail: "Full medical profile (blood type, medications, allergies) sent ahead", type: "action" },
                 { time: "7:26 AM", event: "Neighbor finds Robert on floor", detail: "EMS arrives knowing it's a stroke — treatment starts immediately", type: "critical" },
